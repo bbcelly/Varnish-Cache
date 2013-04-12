@@ -729,8 +729,23 @@ ban_check_object(struct object *o, const struct sess *sp, int has_req)
 int
 BAN_CheckObject(struct object *o, const struct sess *sp)
 {
-
 	return (ban_check_object(o, sp, 1) > 0);
+}
+
+static struct ban *
+BANLIST_BanRemove(struct ban *b)
+{
+	if (b != VTAILQ_FIRST(&ban_head) && b->refcount == 0) {
+		if (b->flags & BAN_F_GONE)
+			VSC_C_main->n_ban_gone--;
+		VSC_C_main->n_ban--;
+		VSC_C_main->n_ban_retire++;
+		VSC_C_main->n_ban_CheckLast_passes++;
+		VTAILQ_REMOVE(&ban_head, b, list);
+		return (b);
+	} else {
+		return (NULL);
+	}
 }
 
 static struct ban *
@@ -741,18 +756,77 @@ ban_CheckLast(void)
 	VSC_C_main->n_ban_CheckLast_calls++;
 
 	Lck_AssertHeld(&ban_mtx);
-	b = VTAILQ_LAST(&ban_head, banhead_s);
-	if (b != VTAILQ_FIRST(&ban_head) && b->refcount == 0) {
-		if (b->flags & BAN_F_GONE)
-			VSC_C_main->n_ban_gone--;
-		VSC_C_main->n_ban--;
-		VSC_C_main->n_ban_retire++;
-		VSC_C_main->n_ban_CheckLast_passes++;
-		VTAILQ_REMOVE(&ban_head, b, list);
-	} else {
-		b = NULL;
-	}
+	b = BANLIST_BanRemove(VTAILQ_LAST(&ban_head, banhead_s));
 	return (b);
+}
+
+/*--------------------------------------------------------------------
+ * BAN remover
+ */
+
+ struct ban_to_free_list_item {
+ 	unsigned		magic;
+#define BAN_TO_FREE_LIST_ITEM_MAGIC		0x700b08e2
+	struct ban *ban;
+	struct ban_to_free_list_item *next_item;
+};
+
+void
+BANLIST_ClearAllGoneBans_partB(void)
+{
+	struct ban *b, *b0;
+	struct ban_to_free_list_item *list_start, *list_item;
+
+	b0 = NULL;
+	list_start = NULL;
+	VTAILQ_FOREACH_REVERSE(b, &ban_head, banhead_s, list) {
+		if (b == VTAILQ_LAST(&ban_head, banhead_s))
+			continue;
+		Lck_Lock(&ban_mtx);
+		Lck_AssertHeld(&ban_mtx);
+		b0 = BANLIST_BanRemove(b);
+		Lck_Unlock(&ban_mtx);
+		if (b0 != NULL) {
+			if (list_start == NULL) {
+				ALLOC_OBJ(list_start, BAN_TO_FREE_LIST_ITEM_MAGIC);
+				list_start->ban = b0;
+				list_start->next_item = NULL;
+				list_item = list_start;
+			}
+			else {
+				ALLOC_OBJ(list_item->next_item, BAN_TO_FREE_LIST_ITEM_MAGIC);
+				list_item = list_item->next_item;
+				list_item->ban = b0;
+				list_item->next_item = NULL;
+			}
+			b0 = NULL;
+		}
+	}
+	TIM_sleep(5.0);
+	list_item = list_start;
+	while (list_start != NULL) {
+		list_item = list_start;
+		list_start = list_start->next_item;
+		BAN_Free(list_item->ban);
+		FREE_OBJ(list_item);
+		list_item = NULL;
+	}
+}
+
+void
+BANLIST_ClearAllGoneBans(void)
+{
+	struct ban *b;
+
+	do {
+		Lck_Lock(&ban_mtx);
+		b = ban_CheckLast();
+		Lck_Unlock(&ban_mtx);
+		if (b != NULL)
+			BAN_Free(b);
+	} while (b != NULL);
+
+	BANLIST_ClearAllGoneBans_partB();
 }
 
 /*--------------------------------------------------------------------
@@ -771,14 +845,17 @@ ban_lurker_work(const struct sess *sp, unsigned pass)
 	AN(pass & BAN_F_LURK);
 	AZ(pass & ~BAN_F_LURK);
 
-	/* First route the last ban(s) */
-	do {
+	/* First try to remove all gone bans */
+	BANLIST_ClearAllGoneBans();
+
+	/* First route the last ban(s) - this may not be necessary because of BANLIST_ClearAllGoneBans */
+/*	do {
 		Lck_Lock(&ban_mtx);
 		b2 = ban_CheckLast();
 		Lck_Unlock(&ban_mtx);
 		if (b2 != NULL)
 			BAN_Free(b2);
-	} while (b2 != NULL);
+	} while (b2 != NULL);*/
 
 	/*
 	 * Find out if we have any bans we can do something about
