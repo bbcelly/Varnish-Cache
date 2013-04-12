@@ -147,6 +147,10 @@ VSC_F(n_ban_obj_test,		uint64_t, 0, 'a', "N objects tested", "")
 VSC_F(n_ban_re_test,		uint64_t, 0, 'a', "N regexps tested against", "")
 VSC_F(n_ban_dups,		uint64_t, 0, 'a', "N duplicate bans removed", "")
 
+VSC_F(n_ban_CheckLast_calls,		uint64_t, 0, 'a', "N ban_CheckLast calls", "")
+VSC_F(n_ban_CheckLast_passes,		uint64_t, 0, 'a', "N ban_CheckLast found something and deleted it", "")
+VSC_F(n_ban_retire_lurk,		uint64_t, 0, 'a', "N old bans deleted in lurker work", "")
+
 VSC_F(hcb_nolock,		uint64_t, 0, 'a', "HCB Lookups without lock", "")
 VSC_F(hcb_lock,		uint64_t, 0, 'a', "HCB Lookups with lock", "")
 VSC_F(hcb_insert,		uint64_t, 0, 'a', "HCB Inserts", "")

@@ -738,6 +738,8 @@ ban_CheckLast(void)
 {
 	struct ban *b;
 
+	VSC_C_main->n_ban_CheckLast_calls++;
+
 	Lck_AssertHeld(&ban_mtx);
 	b = VTAILQ_LAST(&ban_head, banhead_s);
 	if (b != VTAILQ_FIRST(&ban_head) && b->refcount == 0) {
@@ -745,6 +747,7 @@ ban_CheckLast(void)
 			VSC_C_main->n_ban_gone--;
 		VSC_C_main->n_ban--;
 		VSC_C_main->n_ban_retire++;
+		VSC_C_main->n_ban_CheckLast_passes++;
 		VTAILQ_REMOVE(&ban_head, b, list);
 	} else {
 		b = NULL;
@@ -763,7 +766,7 @@ ban_lurker_work(const struct sess *sp, unsigned pass)
 	struct objhead *oh;
 	struct objcore *oc, *oc2;
 	struct object *o;
-	int i;
+	int i, j, k, lurk_done;
 
 	AN(pass & BAN_F_LURK);
 	AZ(pass & ~BAN_F_LURK);
@@ -801,12 +804,48 @@ ban_lurker_work(const struct sess *sp, unsigned pass)
 	if (i == 0)
 		return (0);
 
+	j = 0;
+	k = 0;
+	lurk_done = 0;
 	VTAILQ_FOREACH_REVERSE(b, &ban_head, banhead_s, list) {
 		if (params->diag_bitmap & 0x80000)
 			VSL(SLT_Debug, 0, "lurker doing %f %d",
 			    ban_time(b->spec), b->refcount);
 		while (1) {
+			j++;
+			k++;
+			/* 
+			 * Check, that there is some ban on the end of
+			 * banlist, that can't be remowed without
+			 * going through lurker work. If so, restart
+			 * lurker work to process it.
+			 */
+			if (k > 5000 && VSC_C_main->n_ban > 50000
+				&& VSC_C_main->n_ban_gone > 25000)
+				return (1);
 			Lck_Lock(&ban_mtx);
+			/* Try to remove some bans from banlist in lurker work */
+			if(j > 500)
+			{
+				j = 0;
+				do {
+					b2 = ban_CheckLast();
+					if (b2 != NULL)
+					{
+						k = 0;
+						VSC_C_main->n_ban_retire_lurk++;
+						Lck_Unlock(&ban_mtx);
+						if (b2 == b0)
+							lurk_done = 1;
+						if (b2 == b && lurk_done == 0)
+							(b) = VTAILQ_PREV((b), banhead_s, list);
+						BAN_Free(b2);
+						if (lurk_done == 1)
+							return (1);
+						Lck_Lock(&ban_mtx);
+					}
+				} while (b2 != NULL);
+			}
 			oc = VTAILQ_FIRST(&b->objcore);
 			if (oc == NULL)
 				break;
