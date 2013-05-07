@@ -2,7 +2,7 @@ This is Varnish Cache, the high-performance HTTP accelerator.
 
 This fork is even more powerful. If you are using Varnish as
 intensively as we do, you definately should try this. It uses more
-than seven time less CPU in our peaks than stock Varnish.
+than five time less CPU in our peaks than stock Varnish.
 
 Documentation and additional information about Varnish is available on
 http://www.varnish-cache.org/
