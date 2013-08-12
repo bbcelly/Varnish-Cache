@@ -784,7 +784,12 @@ BANLIST_ClearAllGoneBans_partB(void)
 			continue;
 		Lck_Lock(&ban_mtx);
 		Lck_AssertHeld(&ban_mtx);
-		b0 = BANLIST_BanRemove(b);
+		if (b->flags & BAN_F_GONE) {
+			b0 = BANLIST_BanRemove(b);
+		}
+		else {
+			b0 = NULL;
+		}
 		Lck_Unlock(&ban_mtx);
 		if (b0 != NULL) {
 			if (list_start == NULL) {
