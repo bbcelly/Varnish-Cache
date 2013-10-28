@@ -152,6 +152,11 @@ VSC_F(n_ban_CheckLast_passes,		uint64_t, 0, 'a', "N ban_CheckLast found somethin
 VSC_F(n_ban_retire_lurk,		uint64_t, 0, 'a', "N old bans deleted in lurker work", "")
 VSC_F(n_ban_lurk_aborts,		uint64_t, 0, 'a', "N aborts of ban_lurker_work", "")
 
+VSC_F(n_expired1,                uint64_t, 0, 'i', "N expired objects alg. continue 1", "")
+VSC_F(n_expired2,                uint64_t, 0, 'i', "N expired objects alg. continue 2", "")
+VSC_F(n_expired3,                uint64_t, 0, 'i', "N expired objects alg. continue 3", "")
+VSC_F(n_expired4,                uint64_t, 0, 'i', "N expired objects alg. continue 4", "")
+
 VSC_F(hcb_nolock,		uint64_t, 0, 'a', "HCB Lookups without lock", "")
 VSC_F(hcb_lock,		uint64_t, 0, 'a', "HCB Lookups with lock", "")
 VSC_F(hcb_insert,		uint64_t, 0, 'a', "HCB Inserts", "")

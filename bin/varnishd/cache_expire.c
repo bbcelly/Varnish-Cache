@@ -355,6 +355,7 @@ exp_timer(struct sess *sp, void *priv)
 		oc = binheap_root(exp_heap);
 		if (oc == NULL) {
 			Lck_Unlock(&exp_mtx);
+VSC_C_main->n_expired1++;
 			continue;
 		}
 		CHECK_OBJ_NOTNULL(oc, OBJCORE_MAGIC);
@@ -368,6 +369,7 @@ exp_timer(struct sess *sp, void *priv)
 		if (oc->timer_when > t) {
 			Lck_Unlock(&exp_mtx);
 			oc = NULL;
+VSC_C_main->n_expired2++;
 			continue;
 		}
 
@@ -375,6 +377,7 @@ exp_timer(struct sess *sp, void *priv)
 		if (oc->flags & OC_F_BUSY) {
 			Lck_Unlock(&exp_mtx);
 			oc = NULL;
+VSC_C_main->n_expired3++;
 			continue;
 		}
 
@@ -391,6 +394,7 @@ exp_timer(struct sess *sp, void *priv)
 		if (Lck_Trylock(&lru->mtx)) {
 			Lck_Unlock(&exp_mtx);
 			oc = NULL;
+VSC_C_main->n_expired4++;
 			continue;
 		}
 
