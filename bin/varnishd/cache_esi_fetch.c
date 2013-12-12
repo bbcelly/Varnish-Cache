@@ -271,6 +271,9 @@ vfp_esi_bytes_gg(struct sess *sp, struct http_conn *htc, size_t bytes)
 			VGZ_Obuf(sp->wrk->vgz_rx, ibuf2, sizeof ibuf2);
 			i = VGZ_Gunzip(sp->wrk->vgz_rx, &dp, &dl);
 			/* XXX: check i */
+			if (i < VGZ_OK) {
+				return -1;
+			}
 			assert(i >= VGZ_OK);
 			vef->bufp = ibuf2;
 			if (dl > 0)
