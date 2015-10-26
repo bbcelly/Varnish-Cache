@@ -1,6 +1,6 @@
 #
 
-SUBDIRS = varnishadm varnishd varnishlog varnishncsa varnishreplay varnishtest
+SUBDIRS = varnishadm varnishd varnishlog lsvstats varnishncsa varnishreplay varnishtest
 
 if HAVE_CURSES
 SUBDIRS += varnishhist varnishstat varnishtop varnishsizes
