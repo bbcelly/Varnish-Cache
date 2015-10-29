@@ -40,6 +40,7 @@
 #include <ctype.h>
 #include <regex.h>
 #include <math.h>
+#include <limits.h>
 
 #include "compat/daemon.h"
 
@@ -53,6 +54,8 @@
 typedef enum { false, true } bool;
 
 /* Globals ------------------------------------------------------------*/
+static volatile sig_atomic_t showtime;
+
 typedef struct {
 	char	*key;
 	regex_t	reg;
@@ -99,6 +102,8 @@ typedef struct {
 vsdf	*lsvs_d_hit;
 vsdf	*lsvs_d_miss;
 
+vsdf	*(lsvs_d[4]);
+
 static void cleanup(int signal);
 static void output(int signal);
 
@@ -113,8 +118,8 @@ static void lsvs_init()
 	for (i=0; i < confs; i++) {
 		lsvs_d_miss[i].c=0;
 		lsvs_d_miss[i].ttfb=0.0;
-		lsvs_d_miss[i].dttfb=(double *)malloc(m*sizeof(double));
 		lsvs_d_miss[i].ttlb=0.0;
+		lsvs_d_miss[i].dttfb=(double *)malloc(m*sizeof(double));
 		lsvs_d_miss[i].dttlb=(double *)malloc(m*sizeof(double));
 		lsvs_d_miss[i].dm=m;
 	}
@@ -124,10 +129,24 @@ static void lsvs_init()
 	for (i=0; i < confs; i++) {
 		lsvs_d_hit[i].c=0;
 		lsvs_d_hit[i].ttfb=0.0;
-		lsvs_d_hit[i].dttfb=(double *)malloc(m*sizeof(double));
 		lsvs_d_hit[i].ttlb=0.0;
+		lsvs_d_hit[i].dttfb=(double *)malloc(m*sizeof(double));
 		lsvs_d_hit[i].dttlb=(double *)malloc(m*sizeof(double));
 		lsvs_d_hit[i].dm=m;
+	}
+}
+
+static void lsvs_clear()
+{
+	int i;
+	for (i=0; i < confs; i++) {
+		lsvs_d_miss[i].c=0;
+		lsvs_d_miss[i].ttfb=0.0;
+		lsvs_d_miss[i].ttlb=0.0;
+
+		lsvs_d_hit[i].c=0;
+		lsvs_d_hit[i].ttfb=0.0;
+		lsvs_d_hit[i].ttlb=0.0;
 	}
 }
 
@@ -148,41 +167,63 @@ static void lsvs_cleanup()
 	free(lsvs_d_hit);
 }
 
-static void lsvs_clear()
-{
-	lsvs_cleanup();
-	lsvs_init();
-}
-
 static void lsvs_add(enum VCacheStatus handl, unsigned int i, double ttfb, double ttlb)
 {
 	switch (handl) {
 		case hit:
-			if (lsvs_d_hit[i].c >= lsvs_d_hit[i].dm) {
-				realloc(lsvs_d_hit[i].dttfb, (sizeof(double *)*lsvs_d_hit[i].dm*2));
-				realloc(lsvs_d_hit[i].dttlb, (sizeof(double *)*lsvs_d_hit[i].dm*2));
-				lsvs_d_hit[i].dm*=2;
-			}
-
 			lsvs_d_hit[i].ttfb+=ttfb;
 			lsvs_d_hit[i].ttlb+=ttlb;
 			lsvs_d_hit[i].dttfb[lsvs_d_hit[i].c]=ttfb;
 			lsvs_d_hit[i].dttlb[lsvs_d_hit[i].c]=ttlb;
 			lsvs_d_hit[i].c++;
+
+			if (lsvs_d_hit[i].c >= lsvs_d_hit[i].dm) {
+				if (lsvs_d_hit[i].dm*2 > ULONG_MAX) {
+					lsvs_d_hit[i].dm=ULONG_MAX;
+					fprintf(stderr, "D----> reallocing hit for %s with FUCKING MAX! ...", conf[i].key);
+
+				} else {
+					lsvs_d_hit[i].dm*=2;
+					fprintf(stderr, "D----> reallocing hit for %s with new size %lu ...", conf[i].key, lsvs_d_hit[i].dm);
+				}
+
+
+				realloc(lsvs_d_hit[i].dttfb, (sizeof(double *)*lsvs_d_hit[i].dm));
+				realloc(lsvs_d_hit[i].dttlb, (sizeof(double *)*lsvs_d_hit[i].dm));
+
+				fprintf(stderr, "Done\n");
+			} else if (lsvs_d_hit[i].c >= ULONG_MAX) {
+				fprintf(stderr, "D----> Data object for %s_hit is full!!!\n", conf[i].key);
+				showtime=1;
+			}
 			break;
 		case miss:
 		case pass:
-			if (lsvs_d_miss[i].c >= lsvs_d_miss[i].dm) {
-				realloc(lsvs_d_miss[i].dttfb, (sizeof(double *)*lsvs_d_miss[i].dm*2));
-				realloc(lsvs_d_miss[i].dttlb, (sizeof(double *)*lsvs_d_miss[i].dm*2));
-				lsvs_d_miss[i].dm*=2;
-			}
-
 			lsvs_d_miss[i].ttfb+=ttfb;
 			lsvs_d_miss[i].ttlb+=ttlb;
 			lsvs_d_miss[i].dttfb[lsvs_d_miss[i].c]=ttfb;
 			lsvs_d_miss[i].dttlb[lsvs_d_miss[i].c]=ttlb;
 			lsvs_d_miss[i].c++;
+
+			if (lsvs_d_miss[i].c >= lsvs_d_miss[i].dm) {
+				if (lsvs_d_miss[i].dm*2 > ULONG_MAX) {
+					lsvs_d_miss[i].dm=ULONG_MAX;
+					fprintf(stderr, "D----> reallocing hit for %s with FUCKING MAX! ...", conf[i].key);
+
+				} else {
+					lsvs_d_miss[i].dm*=2;
+					fprintf(stderr, "D----> reallocing hit for %s with new size %lu ...", conf[i].key, lsvs_d_miss[i].dm);
+				}
+
+
+				realloc(lsvs_d_miss[i].dttfb, (sizeof(double *)*lsvs_d_miss[i].dm));
+				realloc(lsvs_d_miss[i].dttlb, (sizeof(double *)*lsvs_d_miss[i].dm));
+
+				fprintf(stderr, "Done\n");
+			} else if (lsvs_d_miss[i].c >= ULONG_MAX) {
+				fprintf(stderr, "D----> Data object for %s_miss is full!!!\n", conf[i].key);
+				showtime=1;
+			}
 			break;
 	}
 
@@ -202,46 +243,56 @@ static int lsvs_qsort_cmp (const void * a, const void * b)
 static void lsvs_compute()
 {
 	int	i,j,jm;
-	double wttfb_h,wttlb_h,wttfb_m,wttlb_m;
+	double wttfb,wttlb;
 
 	for (i = 0; i < confs; i++) {
-		qsort(lsvs_d_miss[i].dttfb, lsvs_d_miss[i].c, sizeof(double), lsvs_qsort_cmp);
-		qsort(lsvs_d_miss[i].dttfb, lsvs_d_miss[i].c, sizeof(double), lsvs_qsort_cmp);
-		qsort(lsvs_d_hit[i].dttfb, lsvs_d_hit[i].c, sizeof(double), lsvs_qsort_cmp);
-		qsort(lsvs_d_hit[i].dttfb, lsvs_d_hit[i].c, sizeof(double), lsvs_qsort_cmp);
+		if (lsvs_d_miss[i].c > 0) {
+			qsort(lsvs_d_miss[i].dttfb, lsvs_d_miss[i].c, sizeof(double), lsvs_qsort_cmp);
+			qsort(lsvs_d_miss[i].dttfb, lsvs_d_miss[i].c, sizeof(double), lsvs_qsort_cmp);
 
-		wttfb_m=0.0;
-		wttlb_m=0.0;
-		jm=(int)floor((double)(lsvs_d_miss[i].c*0.1));
+			wttfb=0.0;
+			wttlb=0.0;
+			jm=(int)floor((double)(lsvs_d_miss[i].c*0.1));
 
-		if (jm > 0) {
-			for (j = 0; j < jm; j++) {
-				//fprintf(stderr, "C----> %lf , %lf\n", lsvs_d_miss[i].dttfb[j], lsvs_d_miss[i].dttlb[j]);
-				wttfb_m+=lsvs_d_miss[i].dttfb[j];
-				wttlb_m+=lsvs_d_miss[i].dttlb[j];
+			if (jm > 0) {
+				for (j = 0; j < jm; j++) {
+					//fprintf(stderr, "C----> %lf , %lf\n", lsvs_d_miss[i].dttfb[j], lsvs_d_miss[i].dttlb[j]);
+					wttfb+=lsvs_d_miss[i].dttfb[j];
+					wttlb+=lsvs_d_miss[i].dttlb[j];
+				}
+
+				wttfb/=(double)jm;
+				wttlb/=(double)jm;
 			}
 
-			wttfb_m/=jm;
-			wttlb_m/=jm;
+			fprintf(stderr, "%s count_miss:%lu avarage_miss:%lf 10wa_miss:%lf ", conf[i].key, lsvs_d_miss[i].c, lsvs_d_miss[i].ttfb/lsvs_d_miss[i].c, wttfb);
+		} else {
+			fprintf(stderr, "%s count_miss:%lu avarage_miss:0 10wa_miss:0 ", conf[i].key, lsvs_d_miss[i].c);
 		}
 
-		wttfb_h=0.0;
-		wttlb_h=0.0;
-		jm=(int)floor((double)(lsvs_d_hit[i].c*0.1));
+		if (lsvs_d_hit[i].c > 0) {
+			qsort(lsvs_d_hit[i].dttfb, lsvs_d_hit[i].c, sizeof(double), lsvs_qsort_cmp);
+			qsort(lsvs_d_hit[i].dttfb, lsvs_d_hit[i].c, sizeof(double), lsvs_qsort_cmp);
 
-		if (jm > 0) {
-			for (j = 0; j < jm; j++) {
-				//fprintf(stderr, "C----> %lf , %lf\n", lsvs_d_hit[i].dttfb[j], lsvs_d_hit[i].dttlb[j]);
-				wttfb_h+=lsvs_d_hit[i].dttfb[j];
-				wttlb_h+=lsvs_d_hit[i].dttlb[j];
+			wttfb=0.0;
+			wttlb=0.0;
+			jm=(int)floor((double)(lsvs_d_hit[i].c*0.1));
+
+			if (jm > 0) {
+				for (j = 0; j < jm; j++) {
+					//fprintf(stderr, "C----> %lf , %lf\n", lsvs_d_hit[i].dttfb[j], lsvs_d_hit[i].dttlb[j]);
+					wttfb+=lsvs_d_hit[i].dttfb[j];
+					wttlb+=lsvs_d_hit[i].dttlb[j];
+				}
+
+				wttfb/=(double)jm;
+				wttlb/=(double)jm;
 			}
+
+			fprintf(stderr, "count_hit:%lu avarage_hit:%lf 10wa_hit:%lf\n", lsvs_d_hit[i].c, lsvs_d_hit[i].ttfb/lsvs_d_hit[i].c, wttfb);
+		} else {
+			fprintf(stderr, "count_hit:%lu avarage_hit:0 10wa_hit:0\n", lsvs_d_hit[i].c);
 		}
-
-		wttfb_h/=jm;
-		wttlb_h/=jm;
-
-		fprintf(stderr, "%s count_miss:%lu avarage_miss:%lf 10wa_miss:%lf", conf[i].key, lsvs_d_miss[i].c, lsvs_d_miss[i].ttfb/lsvs_d_miss[i].c, wttfb_m);
-		fprintf(stderr, "count_hit:%lu avarage_hit:%lf 10wa_hit:%lf\n", lsvs_d_hit[i].c, lsvs_d_hit[i].ttfb/lsvs_d_hit[i].c, wttfb_h);
 	}
 }
 
@@ -376,6 +427,7 @@ static void vslf_clear(vslf *ptr)
 static void analyze(int fd, const struct VSM_data *vd)
 {
 	int i=0;
+
 	if (vslf_status(&(ob[fd])) && VSL_Matched(vd, bitmap[fd])) {
 		//fprintf(stderr, "M----> Matched\n");
 		//fprintf(stderr, "A----> %i %s %0.9lf %0.9lf %i %i\n", ob[fd].status, ob[fd].url, ob[fd].ttfb, ob[fd].ttlb, ob[fd].req, ob[fd].handling);
@@ -412,6 +464,13 @@ static int collect(void *priv, enum VSL_tag_e tag, unsigned fd, unsigned len,
     unsigned spec, const char *ptr, uint64_t bm)
 {
 	struct VSM_data *vd = priv;
+
+	/* SIGUSR1 was raised so we need to output data */
+	if (showtime > 0) {
+		lsvs_compute();
+		lsvs_clear();
+		showtime=0;
+	}
 
 	/* Just ignore any fd not inside the bitmap */
 	if (fd >= sizeof bitmap / sizeof bitmap[0])
@@ -581,6 +640,7 @@ main(int argc, char * const *argv)
 	lsvs_init();
 
 	/* run */
+	showtime=0;
 	while (1) {
 		i = VSL_Dispatch(vd, collect, vd);
 		if (i == 0) {
@@ -614,7 +674,5 @@ static void cleanup(int signal)
 static void output(int signal)
 {
 	signal=0;
-
-	lsvs_compute();
-	lsvs_clear();
+	showtime=1;
 }

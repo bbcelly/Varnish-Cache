@@ -19,6 +19,8 @@ lsvstats_LDADD = \
 	$(top_builddir)/lib/libvarnishapi/libvarnishapi.la \
 	${PTHREAD_LIBS}
 
+lsvstats_LDFLAGS = -lm
+
 lsvstats.1: $(top_srcdir)/doc/sphinx/reference/lsvstats.rst
 if HAVE_RST2MAN
 	${RST2MAN} $? $@
