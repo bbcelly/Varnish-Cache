@@ -54,6 +54,8 @@
 typedef enum { false, true } bool;
 
 /* Globals ------------------------------------------------------------*/
+#define SOCKETS_MAX	65536
+
 static volatile sig_atomic_t showtime;
 
 typedef struct {
@@ -87,8 +89,8 @@ typedef struct {
 	enum VCacheStatus	handling;	//Varnish Cache status code
 } vslf;							//Varnish Statistics Log Format
 
-vslf			ob[65536];
-static uint64_t	bitmap[65536];
+vslf			ob[SOCKETS_MAX];
+static uint64_t	bitmap[SOCKETS_MAX];
 
 typedef struct {
 	unsigned long	c;		//counter
@@ -112,16 +114,18 @@ static void output(int signal);
 static void lsvs_init()
 {
 	unsigned i;
-	unsigned m=65530;
+
+	//fprintf(stderr, "D----> init\n");
 	lsvs_d_miss=(vsdf *)malloc(confs*sizeof(vsdf));
 
 	for (i=0; i < confs; i++) {
 		lsvs_d_miss[i].c=0;
 		lsvs_d_miss[i].ttfb=0.0;
 		lsvs_d_miss[i].ttlb=0.0;
-		lsvs_d_miss[i].dttfb=(double *)malloc(m*sizeof(double));
-		lsvs_d_miss[i].dttlb=(double *)malloc(m*sizeof(double));
-		lsvs_d_miss[i].dm=m;
+		lsvs_d_miss[i].dm=SOCKETS_MAX;
+		lsvs_d_miss[i].dttfb=(double *)malloc(lsvs_d_miss[i].dm*sizeof(double));
+		lsvs_d_miss[i].dttlb=(double *)malloc(lsvs_d_miss[i].dm*sizeof(double));
+
 	}
 
 	lsvs_d_hit=(vsdf *)malloc(confs*sizeof(vsdf));
@@ -130,15 +134,18 @@ static void lsvs_init()
 		lsvs_d_hit[i].c=0;
 		lsvs_d_hit[i].ttfb=0.0;
 		lsvs_d_hit[i].ttlb=0.0;
-		lsvs_d_hit[i].dttfb=(double *)malloc(m*sizeof(double));
-		lsvs_d_hit[i].dttlb=(double *)malloc(m*sizeof(double));
-		lsvs_d_hit[i].dm=m;
+		lsvs_d_hit[i].dm=SOCKETS_MAX;
+		lsvs_d_hit[i].dttfb=(double *)malloc(lsvs_d_hit[i].dm*sizeof(double));
+		lsvs_d_hit[i].dttlb=(double *)malloc(lsvs_d_hit[i].dm*sizeof(double));
+
 	}
 }
 
 static void lsvs_clear()
 {
 	int i;
+	//fprintf(stderr, "D----> clear\n");
+
 	for (i=0; i < confs; i++) {
 		lsvs_d_miss[i].c=0;
 		lsvs_d_miss[i].ttfb=0.0;
@@ -152,6 +159,8 @@ static void lsvs_clear()
 
 static void lsvs_cleanup()
 {
+	//fprintf(stderr, "D----> cleanup\n");
+
 	for (int i=0; i < confs; i++) {
 		free(lsvs_d_miss[i].dttfb);
 		free(lsvs_d_miss[i].dttlb);
@@ -177,8 +186,11 @@ static void lsvs_add(enum VCacheStatus handl, unsigned int i, double ttfb, doubl
 			lsvs_d_hit[i].dttlb[lsvs_d_hit[i].c]=ttlb;
 			lsvs_d_hit[i].c++;
 
-			if (lsvs_d_hit[i].c >= lsvs_d_hit[i].dm) {
-				if (lsvs_d_hit[i].dm*2 > ULONG_MAX) {
+			if (lsvs_d_hit[i].c >= ULONG_MAX) {
+				fprintf(stderr, "D----> Data object for %s_hit is full!!!\n", conf[i].key);
+				showtime=1;
+			} else if (lsvs_d_hit[i].c >= lsvs_d_hit[i].dm) {
+				if ((lsvs_d_hit[i].dm*2) > ULONG_MAX) {
 					lsvs_d_hit[i].dm=ULONG_MAX;
 					fprintf(stderr, "D----> reallocing hit for %s with FUCKING MAX! ...", conf[i].key);
 
@@ -188,13 +200,10 @@ static void lsvs_add(enum VCacheStatus handl, unsigned int i, double ttfb, doubl
 				}
 
 
-				realloc(lsvs_d_hit[i].dttfb, (sizeof(double *)*lsvs_d_hit[i].dm));
-				realloc(lsvs_d_hit[i].dttlb, (sizeof(double *)*lsvs_d_hit[i].dm));
+				lsvs_d_hit[i].dttfb=(double *)realloc(lsvs_d_hit[i].dttfb, (sizeof(double)*lsvs_d_hit[i].dm));
+				lsvs_d_hit[i].dttlb=(double *)realloc(lsvs_d_hit[i].dttlb, (sizeof(double)*lsvs_d_hit[i].dm));
 
 				fprintf(stderr, "Done\n");
-			} else if (lsvs_d_hit[i].c >= ULONG_MAX) {
-				fprintf(stderr, "D----> Data object for %s_hit is full!!!\n", conf[i].key);
-				showtime=1;
 			}
 			break;
 		case miss:
@@ -206,7 +215,7 @@ static void lsvs_add(enum VCacheStatus handl, unsigned int i, double ttfb, doubl
 			lsvs_d_miss[i].c++;
 
 			if (lsvs_d_miss[i].c >= lsvs_d_miss[i].dm) {
-				if (lsvs_d_miss[i].dm*2 > ULONG_MAX) {
+				if ((lsvs_d_miss[i].dm*2) > ULONG_MAX) {
 					lsvs_d_miss[i].dm=ULONG_MAX;
 					fprintf(stderr, "D----> reallocing hit for %s with FUCKING MAX! ...", conf[i].key);
 
@@ -216,8 +225,8 @@ static void lsvs_add(enum VCacheStatus handl, unsigned int i, double ttfb, doubl
 				}
 
 
-				realloc(lsvs_d_miss[i].dttfb, (sizeof(double *)*lsvs_d_miss[i].dm));
-				realloc(lsvs_d_miss[i].dttlb, (sizeof(double *)*lsvs_d_miss[i].dm));
+				lsvs_d_miss[i].dttfb=(double *)realloc(lsvs_d_miss[i].dttfb, (sizeof(double)*lsvs_d_miss[i].dm));
+				lsvs_d_miss[i].dttlb=(double *)realloc(lsvs_d_miss[i].dttlb, (sizeof(double)*lsvs_d_miss[i].dm));
 
 				fprintf(stderr, "Done\n");
 			} else if (lsvs_d_miss[i].c >= ULONG_MAX) {
@@ -265,7 +274,7 @@ static void lsvs_compute()
 				wttlb/=(double)jm;
 			}
 
-			fprintf(stderr, "%s count_miss:%lu avarage_miss:%lf 10wa_miss:%lf ", conf[i].key, lsvs_d_miss[i].c, lsvs_d_miss[i].ttfb/lsvs_d_miss[i].c, wttfb);
+			fprintf(stderr, "%s count_miss:%lu avarage_miss:%i 10wa_miss:%i ", conf[i].key, lsvs_d_miss[i].c, (int)floor(lsvs_d_miss[i].ttfb/lsvs_d_miss[i].c), (int)floor(wttfb));
 		} else {
 			fprintf(stderr, "%s count_miss:%lu avarage_miss:0 10wa_miss:0 ", conf[i].key, lsvs_d_miss[i].c);
 		}
@@ -289,7 +298,7 @@ static void lsvs_compute()
 				wttlb/=(double)jm;
 			}
 
-			fprintf(stderr, "count_hit:%lu avarage_hit:%lf 10wa_hit:%lf\n", lsvs_d_hit[i].c, lsvs_d_hit[i].ttfb/lsvs_d_hit[i].c, wttfb);
+			fprintf(stderr, "count_hit:%lu avarage_hit:%i 10wa_hit:%i\n", lsvs_d_hit[i].c, (int)floor(lsvs_d_hit[i].ttfb/lsvs_d_hit[i].c), (int)floor(wttfb));
 		} else {
 			fprintf(stderr, "count_hit:%lu avarage_hit:0 10wa_hit:0\n", lsvs_d_hit[i].c);
 		}
@@ -449,7 +458,7 @@ static void collect_cleanup(const struct VSM_data *vd)
 {
 	unsigned u;
 
-	for (u = 0; u < 65536; u++) {
+	for (u = 0; u < SOCKETS_MAX; u++) {
 		if (vslf_status(&(ob[u]))) {
 			if (VSL_Matched(vd, bitmap[u])) {
 				//fprintf(stderr, "D----> %i %s %0.9lf %0.9lf %i %i", ob[u].status, ob[u].url, ob[u].ttfb, ob[u].ttlb, ob[u].req, ob[u].handling);
@@ -481,7 +490,6 @@ static int collect(void *priv, enum VSL_tag_e tag, unsigned fd, unsigned len,
 	if (!(spec & (VSL_S_CLIENT|VSL_S_BACKEND))) {
 		return (0);
 	}
-
 	switch (tag) {
 		case SLT_VCL_call:
 			if (strncmp(ptr, "hit", len) == 0) {
@@ -490,8 +498,10 @@ static int collect(void *priv, enum VSL_tag_e tag, unsigned fd, unsigned len,
 				ob[fd].handling = miss;
 			} else if (strncmp(ptr, "pass", len) == 0) {
 				ob[fd].handling = pass;
-			} else if (strncmp(ptr, "pipe", len) == 0) {
-
+				ob[fd].error=true;
+			} else {
+				ob[fd].handling = 0;
+				ob[fd].error=true;
 			}
 			//fprintf(stderr, "hit/miss by [%s]\n", VSL_tags[tag]);
 			break;
@@ -516,6 +526,7 @@ static int collect(void *priv, enum VSL_tag_e tag, unsigned fd, unsigned len,
 			break;
 		case SLT_RxStatus:
 		case SLT_TxStatus:
+			ob[fd].status = 0;
 			if (sscanf(ptr, "%i", &(ob[fd].status)) != 1) {
 				ob[fd].status = 0;
 				ob[fd].error=true;
@@ -524,6 +535,8 @@ static int collect(void *priv, enum VSL_tag_e tag, unsigned fd, unsigned len,
 			//fprintf(stderr, "Status by [%s]\n", VSL_tags[tag]);
 			break;
 		case SLT_ReqEnd:
+			ob[fd].ttfb = 0;
+			ob[fd].ttlb = 0;
 			if (sscanf(ptr, "%*u %*u.%*u %*u.%*u %*u.%*u %lf %lf", &(ob[fd].ttfb), &(ob[fd].ttlb)) != 2) {
 				ob[fd].ttfb = 0;
 				ob[fd].ttlb = 0;
@@ -665,7 +678,6 @@ static void cleanup(int signal)
 {
 	fprintf(stderr, "\nStopped by %i!\n\n", signal);
 
-	lsvs_compute();
 	lsvs_cleanup();
 	config_cleanup();
 	exit(1);
