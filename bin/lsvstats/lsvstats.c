@@ -55,6 +55,9 @@ typedef enum { false, true } bool;
 
 /* Globals ------------------------------------------------------------*/
 #define SOCKETS_MAX	65536
+#define CONFT_ERR	0
+#define	CONFT_ALL	1
+#define CONFT_
 
 static volatile sig_atomic_t showtime;
 
@@ -66,7 +69,7 @@ typedef struct {
 	regex_t	reg;
 } RegExp;
 
-RegExp	conf[100];
+RegExp	*conf;
 int		confs = 0;
 
 enum HttpCodes {
@@ -326,7 +329,7 @@ static void lsvs_compute()
 	}
 	fflush(f);
 	if (f != stdout) {
-		fclose(f);
+		AZ(fclose(f));
 	}
 }
 
@@ -372,6 +375,13 @@ static void read_config(const char *f_arg)
 
 	confs = 0;
 	delim = (char *)malloc(10*sizeof(char));
+
+	while ((cn = getline(&line, &len, file)) != -1) {
+		linen++;
+	}
+	conf = (RegExp *)malloc(sizeof(RegExp)*linen);
+	linen = 0;
+	rewind(file);
 
 	while ((cn = getline(&line, &len, file)) != -1) {
 		linen++;
