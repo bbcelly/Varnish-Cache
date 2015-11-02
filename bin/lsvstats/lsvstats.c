@@ -58,6 +58,9 @@ typedef enum { false, true } bool;
 
 static volatile sig_atomic_t showtime;
 
+int 		a_flag = 0;
+const char	*w_arg = NULL;
+
 typedef struct {
 	char	*key;
 	regex_t	reg;
@@ -104,10 +107,26 @@ typedef struct {
 vsdf	*lsvs_d_hit;
 vsdf	*lsvs_d_miss;
 
-vsdf	*(lsvs_d[4]);
-
 static void cleanup(int signal);
 static void output(int signal);
+
+/* Loging -------------------------------------------------------------*/
+static FILE *
+log_open()
+{
+	FILE *of;
+
+	if (w_arg) {
+		if ((of = fopen(w_arg, a_flag ? "a" : "w")) == NULL) {
+			perror(w_arg);
+			exit(1);
+		}
+	} else {
+		of = stdout;
+	}
+
+	return (of);
+}
 
 /* Data structure handling --------------------------------------------*/
 
@@ -187,23 +206,23 @@ static void lsvs_add(enum VCacheStatus handl, unsigned int i, double ttfb, doubl
 			lsvs_d_hit[i].c++;
 
 			if (lsvs_d_hit[i].c >= ULONG_MAX) {
-				fprintf(stderr, "D----> Data object for %s_hit is full!!!\n", conf[i].key);
+				//fprintf(stderr, "D----> Data object for %s_hit is full!!!\n", conf[i].key);
 				showtime=1;
 			} else if (lsvs_d_hit[i].c >= lsvs_d_hit[i].dm) {
 				if ((lsvs_d_hit[i].dm*2) > ULONG_MAX) {
 					lsvs_d_hit[i].dm=ULONG_MAX;
-					fprintf(stderr, "D----> reallocing hit for %s with FUCKING MAX! ...", conf[i].key);
+					//fprintf(stderr, "D----> reallocing hit for %s with FUCKING MAX! ...", conf[i].key);
 
 				} else {
 					lsvs_d_hit[i].dm*=2;
-					fprintf(stderr, "D----> reallocing hit for %s with new size %lu ...", conf[i].key, lsvs_d_hit[i].dm);
+					//fprintf(stderr, "D----> reallocing hit for %s with new size %lu ...", conf[i].key, lsvs_d_hit[i].dm);
 				}
 
 
 				lsvs_d_hit[i].dttfb=(double *)realloc(lsvs_d_hit[i].dttfb, (sizeof(double)*lsvs_d_hit[i].dm));
 				lsvs_d_hit[i].dttlb=(double *)realloc(lsvs_d_hit[i].dttlb, (sizeof(double)*lsvs_d_hit[i].dm));
 
-				fprintf(stderr, "Done\n");
+				//fprintf(stderr, "Done\n");
 			}
 			break;
 		case miss:
@@ -217,25 +236,24 @@ static void lsvs_add(enum VCacheStatus handl, unsigned int i, double ttfb, doubl
 			if (lsvs_d_miss[i].c >= lsvs_d_miss[i].dm) {
 				if ((lsvs_d_miss[i].dm*2) > ULONG_MAX) {
 					lsvs_d_miss[i].dm=ULONG_MAX;
-					fprintf(stderr, "D----> reallocing hit for %s with FUCKING MAX! ...", conf[i].key);
+					//fprintf(stderr, "D----> reallocing hit for %s with FUCKING MAX! ...", conf[i].key);
 
 				} else {
 					lsvs_d_miss[i].dm*=2;
-					fprintf(stderr, "D----> reallocing hit for %s with new size %lu ...", conf[i].key, lsvs_d_miss[i].dm);
+					//fprintf(stderr, "D----> reallocing hit for %s with new size %lu ...", conf[i].key, lsvs_d_miss[i].dm);
 				}
 
 
 				lsvs_d_miss[i].dttfb=(double *)realloc(lsvs_d_miss[i].dttfb, (sizeof(double)*lsvs_d_miss[i].dm));
 				lsvs_d_miss[i].dttlb=(double *)realloc(lsvs_d_miss[i].dttlb, (sizeof(double)*lsvs_d_miss[i].dm));
 
-				fprintf(stderr, "Done\n");
+				//fprintf(stderr, "Done\n");
 			} else if (lsvs_d_miss[i].c >= ULONG_MAX) {
-				fprintf(stderr, "D----> Data object for %s_miss is full!!!\n", conf[i].key);
+				//fprintf(stderr, "D----> Data object for %s_miss is full!!!\n", conf[i].key);
 				showtime=1;
 			}
 			break;
 	}
-
 }
 
 static int lsvs_qsort_cmp (const void * a, const void * b)
@@ -254,7 +272,12 @@ static void lsvs_compute()
 	int	i,j,jm;
 	double wttfb,wttlb;
 
+	FILE *f = log_open();
+
+	//fprintf(stderr, "D----> output\n");
+
 	for (i = 0; i < confs; i++) {
+
 		if (lsvs_d_miss[i].c > 0) {
 			qsort(lsvs_d_miss[i].dttfb, lsvs_d_miss[i].c, sizeof(double), lsvs_qsort_cmp);
 			qsort(lsvs_d_miss[i].dttfb, lsvs_d_miss[i].c, sizeof(double), lsvs_qsort_cmp);
@@ -273,10 +296,9 @@ static void lsvs_compute()
 				wttfb/=(double)jm;
 				wttlb/=(double)jm;
 			}
-
-			fprintf(stderr, "%s count_miss:%lu avarage_miss:%i 10wa_miss:%i ", conf[i].key, lsvs_d_miss[i].c, (int)floor(lsvs_d_miss[i].ttfb/lsvs_d_miss[i].c), (int)floor(wttfb));
+			fprintf(f, "%s count_miss:%lu avarage_miss:%i 10wa_miss:%i ", conf[i].key, lsvs_d_miss[i].c, (int)floor(lsvs_d_miss[i].ttfb*1000/lsvs_d_miss[i].c), (int)floor(wttfb*1000));
 		} else {
-			fprintf(stderr, "%s count_miss:%lu avarage_miss:0 10wa_miss:0 ", conf[i].key, lsvs_d_miss[i].c);
+			fprintf(f, "%s count_miss:%lu avarage_miss:0 10wa_miss:0 ", conf[i].key, lsvs_d_miss[i].c);
 		}
 
 		if (lsvs_d_hit[i].c > 0) {
@@ -297,11 +319,14 @@ static void lsvs_compute()
 				wttfb/=(double)jm;
 				wttlb/=(double)jm;
 			}
-
-			fprintf(stderr, "count_hit:%lu avarage_hit:%i 10wa_hit:%i\n", lsvs_d_hit[i].c, (int)floor(lsvs_d_hit[i].ttfb/lsvs_d_hit[i].c), (int)floor(wttfb));
+			fprintf(f, "count_hit:%lu avarage_hit:%i 10wa_hit:%i\n", lsvs_d_hit[i].c, (int)floor(lsvs_d_hit[i].ttfb*1000/lsvs_d_hit[i].c), (int)floor(wttfb*1000));
 		} else {
-			fprintf(stderr, "count_hit:%lu avarage_hit:0 10wa_hit:0\n", lsvs_d_hit[i].c);
+			fprintf(f, "count_hit:%lu avarage_hit:0 10wa_hit:0\n", lsvs_d_hit[i].c);
 		}
+	}
+	fflush(f);
+	if (f != stdout) {
+		fclose(f);
 	}
 }
 
@@ -341,7 +366,7 @@ static void read_config(const char *f_arg)
 	if (regcomp(&reconf, "^[[:space:]]*[[:alnum:]_-]+[[:space:]]+[:][[:space:]]+.*$", REG_EXTENDED | REG_ICASE | REG_NOSUB)
 	    || regcomp(&recomm, "^[[:space:]]*[#;].*$", REG_EXTENDED | REG_ICASE | REG_NOSUB)
 	   ) {
-		fprintf(stderr, "Regular Expression compilation failed! Check-up regex.h C library.\n");
+		fprintf(stderr, "Internal Error - Regexp compilation failed!\n");
 	    cleanup(SIGKILL);
 	}
 
@@ -404,6 +429,7 @@ static void config_cleanup() {
 //get status of vslf object
 static bool vslf_status(vslf *ptr)
 {
+	//fprintf(stderr, "S----> Error:%i status:%i url:%s ttfb:%lf ttlb:%lf req:%i handl:%i ...", ptr->error, ptr->status, ptr->url, ptr->ttfb, ptr->ttlb, ptr->req, ptr->handling);
 	if (ptr->error == true
 		|| ptr->status== 0
 		|| ptr->url == NULL
@@ -411,8 +437,10 @@ static bool vslf_status(vslf *ptr)
 		|| ptr->ttlb == 0.0
 		|| ptr->req == 0
 		|| ptr->handling == 0) {
+		//fprintf(stderr, "Fail\n");
 		return(false);
 	} else {
+		//fprintf(stderr, "OK\n");
 		return(true);
 	}
 }
@@ -438,13 +466,16 @@ static void analyze(int fd, const struct VSM_data *vd)
 	int i=0;
 
 	if (vslf_status(&(ob[fd])) && VSL_Matched(vd, bitmap[fd])) {
-		//fprintf(stderr, "M----> Matched\n");
 		//fprintf(stderr, "A----> %i %s %0.9lf %0.9lf %i %i\n", ob[fd].status, ob[fd].url, ob[fd].ttfb, ob[fd].ttlb, ob[fd].req, ob[fd].handling);
-		for (i=0; i < confs; i++) {
-			//fprintf(stderr, "V----> %s | %s\n", conf[i].key, ob[fd].url);
-			if (regexec(&(conf[i].reg), ob[fd].url, 0, NULL, 0) == 0) {
-				//fprintf(stderr, "D----> %s , %lf , %lf\n", conf[i].key, ob[fd].ttfb, ob[fd].ttlb);
-				lsvs_add(ob[fd].handling , i, ob[fd].ttfb, ob[fd].ttlb);
+		if ((ob[fd].status > 399) && (ob[fd].status < 600 ) && (ob[fd].status != 501)) {
+
+		} else {
+			for (i=0; i < confs; i++) {
+				//fprintf(stderr, "V----> %s | %s\n", conf[i].key, ob[fd].url);
+				if (regexec(&(conf[i].reg), ob[fd].url, 0, NULL, 0) == 0) {
+					//fprintf(stderr, "D----> %s , %lf , %lf\n", conf[i].key, ob[fd].ttfb, ob[fd].ttlb);
+					lsvs_add(ob[fd].handling , i, ob[fd].ttfb, ob[fd].ttlb);
+				}
 			}
 		}
 	}
@@ -498,10 +529,8 @@ static int collect(void *priv, enum VSL_tag_e tag, unsigned fd, unsigned len,
 				ob[fd].handling = miss;
 			} else if (strncmp(ptr, "pass", len) == 0) {
 				ob[fd].handling = pass;
-				ob[fd].error=true;
 			} else {
-				ob[fd].handling = 0;
-				ob[fd].error=true;
+				//do nothing, it's ok here
 			}
 			//fprintf(stderr, "hit/miss by [%s]\n", VSL_tags[tag]);
 			break;
@@ -530,7 +559,6 @@ static int collect(void *priv, enum VSL_tag_e tag, unsigned fd, unsigned len,
 			if (sscanf(ptr, "%i", &(ob[fd].status)) != 1) {
 				ob[fd].status = 0;
 				ob[fd].error=true;
-				//fprintf(stderr, "D-----------> neeeeee%i\n", errno);
 			}
 			//fprintf(stderr, "Status by [%s]\n", VSL_tags[tag]);
 			break;
@@ -561,7 +589,8 @@ static int collect(void *priv, enum VSL_tag_e tag, unsigned fd, unsigned len,
 static void
 usage(void)
 {
-	fprintf(stderr, "usage: lsvstats -f config_file [-D] [-n varnish_name] [-P file]\n");
+	fprintf(stderr, "usage: lsvstats -f config_file [-D] [-n varnish_name] "
+					"[-w file] [-P file]\n");
 	exit(1);
 }
 
@@ -583,13 +612,16 @@ main(int argc, char * const *argv)
 	vd = VSM_New();
 	VSL_Setup(vd);
 
-	while ((c = getopt(argc, argv, VSL_ARGS "DP:f:")) != -1) {
+	while ((c = getopt(argc, argv, VSL_ARGS "DP:f:w:")) != -1) {
 		switch (c) {
-			 case 'b':
-				 fprintf(stderr, "-b is not valid for lsvstats\n");
-				 exit(1);
-				 break;
-			 case 'c':
+			case 'a':
+				a_flag = 1;
+				break;
+			case 'b':
+				fprintf(stderr, "-b is not valid for lsvstats\n");
+			 	exit(1);
+			 	break;
+			case 'c':
 			 	/* XXX: Silently ignored: it's required anyway */
 			 	break;
 			case 'D':
@@ -600,6 +632,9 @@ main(int argc, char * const *argv)
 				break;
 			case 'f':
 				f_arg = optarg;
+				break;
+			case 'w':
+				w_arg = optarg;
 				break;
 
 			/* FALLTHROUGH */
@@ -685,6 +720,6 @@ static void cleanup(int signal)
 
 static void output(int signal)
 {
-	signal=0;
+	(void)signal;
 	showtime=1;
 }
