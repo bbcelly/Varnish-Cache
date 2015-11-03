@@ -46,66 +46,24 @@
 
 #include "vsb.h"
 #include "vpf.h"
-
 #include "libvarnish.h"
 #include "vsl.h"
 #include "varnishapi.h"
 
-typedef enum { false, true } bool;
+#include "lsvstats.h"
 
 /* Globals ------------------------------------------------------------*/
-#define SOCKETS_MAX	65536
-#define CONFT_ERR	0
-#define	CONFT_ALL	1
-#define CONFT_
-
 static volatile sig_atomic_t showtime;
 
 int 		a_flag = 0;
 const char	*w_arg = NULL;
 
-typedef struct {
-	char	*key;
-	regex_t	reg;
-} RegExp;
-
 RegExp	*conf;
-int		confs = 0;
 
-enum HttpCodes {
-	GET=1,
-	POST,
-	HEAD,
-	INVALID
-};
-
-enum VCacheStatus {
-	hit=1,
-	miss,
-	pass
-};
-
-typedef struct {
-	bool	error;				//error ocured on cellecting?
-	int		status;				//HTTP status code
-	char	*url;				//URL request
-	double	ttfb;				//time to first byte
-	double	ttlb;				//time to last byte
-	enum HttpCodes		req;	//HTTP request methode
-	enum VCacheStatus	handling;	//Varnish Cache status code
-} vslf;							//Varnish Statistics Log Format
+unsigned	*conft[CONFTN];
 
 vslf			ob[SOCKETS_MAX];
 static uint64_t	bitmap[SOCKETS_MAX];
-
-typedef struct {
-	unsigned long	c;		//counter
-	double			ttfb;	//total time
-	double			*dttfb;	//array of times
-	double			ttlb;	//total time
-	double			*dttlb;	//array of times
-	unsigned long	dm;		//max size of array
-} vsdf;						//Varnish Statistics Data Field
 
 vsdf	*lsvs_d_hit;
 vsdf	*lsvs_d_miss;
@@ -136,6 +94,7 @@ log_open()
 static void lsvs_init()
 {
 	unsigned i;
+	unsigned confs=config_size();
 
 	//fprintf(stderr, "D----> init\n");
 	lsvs_d_miss=(vsdf *)malloc(confs*sizeof(vsdf));
@@ -165,7 +124,8 @@ static void lsvs_init()
 
 static void lsvs_clear()
 {
-	int i;
+	unsigned i;
+	unsigned confs=config_size();
 	//fprintf(stderr, "D----> clear\n");
 
 	for (i=0; i < confs; i++) {
@@ -181,16 +141,18 @@ static void lsvs_clear()
 
 static void lsvs_cleanup()
 {
+	unsigned i;
+	unsigned confs=config_size();
 	//fprintf(stderr, "D----> cleanup\n");
 
-	for (int i=0; i < confs; i++) {
+	for (i=0; i < confs; i++) {
 		free(lsvs_d_miss[i].dttfb);
 		free(lsvs_d_miss[i].dttlb);
 	}
 
 	free(lsvs_d_miss);
 
-	for (int i=0; i < confs; i++) {
+	for (i=0; i < confs; i++) {
 		free(lsvs_d_hit[i].dttfb);
 		free(lsvs_d_hit[i].dttlb);
 	}
@@ -198,7 +160,7 @@ static void lsvs_cleanup()
 	free(lsvs_d_hit);
 }
 
-static void lsvs_add(enum VCacheStatus handl, unsigned int i, double ttfb, double ttlb)
+static void lsvs_add(enum VCacheStatus handl, unsigned i, double ttfb, double ttlb)
 {
 	switch (handl) {
 		case hit:
@@ -274,6 +236,7 @@ static void lsvs_compute()
 {
 	int	i,j,jm;
 	double wttfb,wttlb;
+	unsigned confs=config_size();
 
 	FILE *f = log_open();
 
@@ -335,7 +298,7 @@ static void lsvs_compute()
 
 /* Config -------------------------------------------------------------*/
 
-static FILE* open_config(const char *f_arg)
+static FILE* config_open(const char *f_arg)
 {
 	FILE* file;
 
@@ -347,11 +310,22 @@ static FILE* open_config(const char *f_arg)
 	return (file);
 }
 
-static void read_config(const char *f_arg)
+static unsigned config_size() {
+	unsigned i;
+	unsigned n=0;
+
+	for (i=0; i < CONFTN; i++) {
+		n+=(conft[i][0]-1);
+	}
+	return (n);
+}
+
+static void config_read(const char *f_arg)
 {
 	FILE	*file;
 	int     linen = 0;
 	int 	ret = 0;
+	int		i,j, confs;
 	char    *line = NULL;
 	char 	*key;
 	char	*reg;
@@ -362,7 +336,7 @@ static void read_config(const char *f_arg)
 	regex_t reconf;
 	regex_t recomm;
 
-	file = open_config(f_arg);
+	file = config_open(f_arg);
 	XXXAN(file >= 0);
 
 	/* Compile regular expression for config test*/
@@ -379,9 +353,15 @@ static void read_config(const char *f_arg)
 	while ((cn = getline(&line, &len, file)) != -1) {
 		linen++;
 	}
-	conf = (RegExp *)malloc(sizeof(RegExp)*linen);
-	linen = 0;
 	rewind(file);
+
+	conf=(RegExp *)malloc(sizeof(RegExp)*linen);
+	for (i=0; i < CONFTN; i++) {
+		conft[i]=(unsigned *)malloc(linen * sizeof(unsigned));
+		conft[i][0]=1;
+	}
+
+	linen=0;
 
 	while ((cn = getline(&line, &len, file)) != -1) {
 		linen++;
@@ -392,16 +372,37 @@ static void read_config(const char *f_arg)
 		    && (regexec(&recomm, line, 0, NULL, 0) != 0)
 		   ) {
 			if (sscanf(line, "%s : %s", key, reg) == 2) {
-				conf[confs].key = malloc((strlen(key)+1)*sizeof(char));
-				strcpy(conf[confs].key, key);
 
 				ret = regcomp(&conf[confs].reg, reg, REG_EXTENDED | REG_ICASE | REG_NOSUB);
 				if (ret != 0) {
 					regerror(ret, &conf[confs].reg, msgbuf, sizeof(msgbuf));
     				fprintf(stderr, "Warning [%i]: Regex compilation failed: %s\n", linen, msgbuf);
-				}
+				} else {
+					/* which type of key we have */
+					if (strncmp(key, "x_", 2) == 0) {
+						i=CONFT_ALL;
+					} else if (strncmp(key, "xx_", 2) == 0) {
+						i=CONFT_INV;
+					} else if (strncmp(key, "error_", 6) == 0) {
+						i=CONFT_ERR;
+					} else {
+						i=CONFT_ONE;
+					}
 
-				confs++;
+					fprintf(stderr, "D----> Saving %i in %i[%i]\n", confs, i, conft[i][0]);
+					/* get index of free position in array */
+					j=conft[i][0];
+					/* save the index of array to latest free position */
+					conft[i][j]=confs;
+					/* increment the index */
+					conft[i][0]++;
+
+					//conf[confs].key = malloc((strlen(key)+1)*sizeof(char));
+					//strcpy(conf[confs].key, key);
+					conf[confs].key = strdup(key);
+
+					confs++;
+				}
 			} else {
 				fprintf(stderr, "Error [%i]: Parser error!\n", linen);
 				cleanup(SIGKILL);
@@ -417,6 +418,18 @@ static void read_config(const char *f_arg)
 
     }
 
+	for (i=0; i < CONFTN; i++) {
+		fprintf(stderr, "%i[%i]: ", i, conft[i][0]);
+		if (conft[i][0] <= 1) {
+			continue;
+		}
+		for (j=1; j < conft[i][0]; j++) {
+			fprintf(stderr, "%i, ", conft[i][j]);
+		}
+		fprintf(stderr, "\n");
+	}
+	fprintf(stderr, "Total Confs: %i\n", config_size());
+
 	free(delim);
 	free(line);
 	regfree(&reconf);
@@ -425,12 +438,20 @@ static void read_config(const char *f_arg)
 	AZ(fclose(file));
 }
 
-static void config_cleanup() {
+static void config_cleanup()
+{
 	int i;
+	unsigned confs=config_size();
 
 	for (i=0; i < confs ; i++) {
 		free(conf[i].key);
 		regfree(&conf[i].reg);
+	}
+
+	free(conf);
+
+	for (i=0; i < CONFTN; i++) {
+		free(conft[i]);
 	}
 }
 
@@ -460,6 +481,10 @@ static void vslf_clear(vslf *ptr)
 	//fprintf(stderr, "CLEAR\n");
 	ptr->error=false;
 	ptr->status=0;
+	if (ptr->sstatus != NULL) {
+		free(ptr->sstatus);
+		ptr->sstatus=NULL;
+	}
 	if (ptr->url != NULL) {
 		free(ptr->url);
 		ptr->url=NULL;
@@ -467,24 +492,61 @@ static void vslf_clear(vslf *ptr)
 	ptr->ttfb=0.0;
 	ptr->ttlb=0.0;
 	ptr->req=0;
+	if (ptr->sreq != NULL) {
+		free(ptr->sreq);
+		ptr->sreq=NULL;
+	}
 	ptr->handling=0;
 }
 
 //analyze collected data
 static void analyze(int fd, const struct VSM_data *vd)
 {
-	int i=0;
+	unsigned i;
+	unsigned idx=0;
 
 	if (vslf_status(&(ob[fd])) && VSL_Matched(vd, bitmap[fd])) {
 		//fprintf(stderr, "A----> %i %s %0.9lf %0.9lf %i %i\n", ob[fd].status, ob[fd].url, ob[fd].ttfb, ob[fd].ttlb, ob[fd].req, ob[fd].handling);
 		if ((ob[fd].status > 399) && (ob[fd].status < 600 ) && (ob[fd].status != 501)) {
-
+			/* Error part */
+			for (i=1; i < conft[CONFT_ERR][0]; i++) {
+				idx=conft[CONFT_ERR][i];
+				if (regexec(&(conf[idx].reg), ob[fd].sstatus, 0, NULL, 0) == 0) {
+					//fprintf(stderr, "D----> %s , %lf , %lf\n", conf[idx].key, ob[fd].ttfb, ob[fd].ttlb);
+					lsvs_add(ob[fd].handling , idx, ob[fd].ttfb, ob[fd].ttlb);
+					break;
+				}
+			}
+		} else if ((ob[fd].req != GET) && (ob[fd].req != POST) && (ob[fd].req != HEAD)) {
+			/* INVALID part */
+			for (i=1; i < conft[CONFT_INV][0]; i++) {
+				/* All part */
+				idx=conft[CONFT_INV][i];
+				//fprintf(stderr, "V----> %s | %s\n", conf[idx].key, ob[fd].url);
+				if (regexec(&(conf[idx].reg), ob[fd].sreq, 0, NULL, 0) == 0) {
+					//fprintf(stderr, "D----> %s , %lf , %lf\n", conf[idx].key, ob[fd].ttfb, ob[fd].ttlb);
+					lsvs_add(ob[fd].handling , idx, ob[fd].ttfb, ob[fd].ttlb);
+				}
+			}
 		} else {
-			for (i=0; i < confs; i++) {
-				//fprintf(stderr, "V----> %s | %s\n", conf[i].key, ob[fd].url);
-				if (regexec(&(conf[i].reg), ob[fd].url, 0, NULL, 0) == 0) {
-					//fprintf(stderr, "D----> %s , %lf , %lf\n", conf[i].key, ob[fd].ttfb, ob[fd].ttlb);
-					lsvs_add(ob[fd].handling , i, ob[fd].ttfb, ob[fd].ttlb);
+			for (i=1; i < conft[CONFT_ALL][0]; i++) {
+				/* All part */
+				idx=conft[CONFT_ALL][i];
+				//fprintf(stderr, "V----> %s | %s\n", conf[idx].key, ob[fd].url);
+				if (regexec(&(conf[idx].reg), ob[fd].url, 0, NULL, 0) == 0) {
+					//fprintf(stderr, "D----> %s , %lf , %lf\n", conf[idx].key, ob[fd].ttfb, ob[fd].ttlb);
+					lsvs_add(ob[fd].handling , idx, ob[fd].ttfb, ob[fd].ttlb);
+				}
+			}
+
+			for (i=1; i < conft[CONFT_ONE][0]; i++) {
+				/* Only first occurence */
+				idx=conft[CONFT_ONE][i];
+				//fprintf(stderr, "V----> %s | %s\n", conf[idx].key, ob[fd].url);
+				if (regexec(&(conf[idx].reg), ob[fd].url, 0, NULL, 0) == 0) {
+					//fprintf(stderr, "D----> %s , %lf , %lf\n", conf[idx].key, ob[fd].ttfb, ob[fd].ttlb);
+					lsvs_add(ob[fd].handling , idx, ob[fd].ttfb, ob[fd].ttlb);
+					break;
 				}
 			}
 		}
@@ -555,12 +617,16 @@ static int collect(void *priv, enum VSL_tag_e tag, unsigned fd, unsigned len,
 			} else {
 				ob[fd].req = INVALID;
 			}
+
+			ob[fd].sreq = strndup(ptr, len);
 			//fprintf(stderr, "Request by [%s]\n", VSL_tags[tag]);
 			break;
 		case SLT_TxURL:
 		case SLT_RxURL:
-			ob[fd].url = (char *)calloc((len+1), sizeof(char));
-			strncpy(ob[fd].url, ptr , len);
+			//ob[fd].url = (char *)calloc((len+1), sizeof(char));
+			//strncpy(ob[fd].url, ptr , len);
+
+			ob[fd].url = strndup(ptr, len);
 			//fprintf(stderr, "URL by [%s] %s\n", VSL_tags[tag], ob[fd].url);
 			break;
 		case SLT_RxStatus:
@@ -569,6 +635,8 @@ static int collect(void *priv, enum VSL_tag_e tag, unsigned fd, unsigned len,
 			if (sscanf(ptr, "%i", &(ob[fd].status)) != 1) {
 				ob[fd].status = 0;
 				ob[fd].error=true;
+			} else {
+				ob[fd].sstatus = strndup(ptr, len);
 			}
 			//fprintf(stderr, "Status by [%s]\n", VSL_tags[tag]);
 			break;
@@ -667,7 +735,7 @@ main(int argc, char * const *argv)
 
 	/* read config file */
 	if (f_arg) {
-		read_config(f_arg);
+		config_read(f_arg);
 	} else {
 		perror(f_arg);
 		exit(1);
