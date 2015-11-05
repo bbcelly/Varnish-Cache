@@ -188,7 +188,7 @@ config_read(const char *f_arg)
 				ret = regcomp(&(conf[confs].reg), reg, REG_EXTENDED | REG_ICASE | REG_NOSUB);
 				if (ret != 0) {
 					regerror(ret, &(conf[confs].reg), msgbuf, sizeof(msgbuf));
-    				fprintf(stderr, "Warning [%i]: Regex compilation failed: %s\n", linen, msgbuf);
+					fprintf(stderr, "Warning [%i]: Regex compilation failed: %s\n", linen, msgbuf);
 					regfree(&(conf[confs].reg));
 				} else {
 					/* which type of key we have */
@@ -230,7 +230,7 @@ config_read(const char *f_arg)
 		free(reg);
 		reg=NULL;
 
-    }
+	}
 
 	free(delim);
 	free(line);
@@ -586,7 +586,7 @@ collect_cleanup()
 
 static int
 collect(void *priv, enum VSL_tag_e tag, unsigned fd, unsigned len,
-        unsigned spec, const char *ptr, uint64_t bm)
+	    unsigned spec, const char *ptr, uint64_t bm)
 {
 	struct VSM_data *vd = priv;
 
