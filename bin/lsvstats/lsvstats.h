@@ -7,7 +7,7 @@
 
 typedef enum { false, true } bool;
 typedef struct regexp_s {
-	char	*key;
+	char	**key;
 	regex_t	reg;
 } regexp;
 
@@ -24,27 +24,28 @@ enum vcachestatus {
 	pass
 };
 
-typedef struct vslf_s {
+typedef struct vsl_s {
 	bool	error;				//error ocured on cellecting?
 	int		status;				//HTTP status code
-	char	*sstatus;			//HTTP status code in string
-	char	*url;				//URL request
+	char	**sstatus;			//HTTP status code in string
+	char	**url;				//URL request
 	double	ttfb;				//time to first byte
 	double	ttlb;				//time to last byte
 	enum httpcodes		req;	//HTTP request methode
-	char				*sreq;	//HTTP request methode in string
+	char				**sreq;	//HTTP request methode in string
 	enum vcachestatus	handling;	//Varnish Cache status code
-} vslf;							//Varnish Statistics Log Format
+} vsl;							//Varnish Statistics Log Format
 
-typedef struct vsdf_s {
+typedef struct vsd_s {
 	unsigned long	c;		//counter
 	double			ttfb;	//total time
-	double			*dttfb;	//array of times
+	double			**dttfb;	//array of times
 	double			ttlb;	//total time
-	double			*dttlb;	//array of times
+	double			**dttlb;	//array of times
 	unsigned long	dm;		//max size of array
-} vsdf;						//Varnish Statistics Data Field
+} vsd;						//Varnish Statistics Data Field
 
+static void sigterm(int signal);
 static void cleanup(int signal);
 static void output(int signal);
 
@@ -63,12 +64,12 @@ static unsigned config_size();
 static void     config_read(const char *f_arg);
 static void     config_cleanup();
 
-static bool vslf_status(vslf *ptr);
-static void vslf_cleanup(vslf *ptr);
-static void vslf_clear(vslf *ptr);
-static void vslf_init();
+static bool vsl_status(vsl *ptr);
+static void vsl_cleanup(vsl *ptr);
+static void vsl_clear(vsl *ptr);
+static void vsl_init();
 
-static void collect_analyze(int fd, const struct VSM_data *vd);
+static void collect_analyze(int fd);
 static void collect_init();
 static void collect_cleanup();
 static int  collect(void *priv, enum VSL_tag_e tag, unsigned fd, unsigned len, unsigned spec, const char *ptr, uint64_t bm);

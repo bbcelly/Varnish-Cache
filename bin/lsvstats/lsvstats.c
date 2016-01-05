@@ -53,7 +53,10 @@
 #include "lsvstats.h"
 
 /* Globals -------------------------------------------------------------------*/
+struct VSM_data *vd;
+
 static volatile sig_atomic_t showtime;
+static volatile sig_atomic_t sigexit;
 
 int 		a_flag = 0;
 const char	*w_arg = NULL;
@@ -61,9 +64,9 @@ const char	*w_arg = NULL;
 regexp		*conf;
 unsigned	*conft[CONFTN];
 
-vslf	ob[SOCKETS_MAX];
-vsdf	*lsvs_d_hit;
-vsdf	*lsvs_d_miss;
+vsl	ob[SOCKETS_MAX];
+vsd	*lsvs_d_hit;
+vsd	*lsvs_d_miss;
 
 static uint64_t	bitmap[SOCKETS_MAX];
 
@@ -169,7 +172,7 @@ config_read(const char *f_arg)
 
 	conf=(regexp *)malloc(sizeof(regexp)*linen);
 	for (i=0; i < CONFTN; i++) {
-		conft[i]=(unsigned *)malloc(linen * sizeof(unsigned));
+		conft[i]=(unsigned *)malloc((linen + 1) * sizeof(unsigned));
 		conft[i][0]=1;
 	}
 
@@ -192,18 +195,19 @@ config_read(const char *f_arg)
 					regfree(&(conf[confs].reg));
 				} else {
 					/* which type of key we have */
+					conf[confs].key = (char **)malloc(sizeof(char *));
 					if (strncmp(key, "x_", 2) == 0) {
 						i=CONFT_ALL;
-						conf[confs].key = strip(key, 2);
+						*(conf[confs].key) = strip(key, 2);
 					} else if (strncmp(key, "xx_", 3) == 0) {
 						i=CONFT_INV;
-						conf[confs].key = strip(key, 3);
+						*(conf[confs].key) = strip(key, 3);
 					} else if (strncmp(key, "error_", 6) == 0) {
 						i=CONFT_ERR;
-						conf[confs].key = strdup(key);
+						*(conf[confs].key) = strdup(key);
 					} else {
 						i=CONFT_ONE;
-						conf[confs].key = strdup(key);
+						*(conf[confs].key) = strdup(key);
 					}
 
 					/* get index of free position in array */
@@ -212,8 +216,6 @@ config_read(const char *f_arg)
 					conft[i][j]=confs;
 					/* increment the index */
 					conft[i][0]++;
-
-
 
 					confs++;
 				}
@@ -247,6 +249,7 @@ config_cleanup()
 	unsigned confs=config_size();
 
 	for (i=0; i < confs ; i++) {
+		free(*(conf[i].key));
 		free(conf[i].key);
 		regfree(&conf[i].reg);
 	}
@@ -266,28 +269,30 @@ lsvs_init()
 	unsigned i;
 	unsigned confs=config_size();
 
-	lsvs_d_miss=(vsdf *)malloc(confs*sizeof(vsdf));
+	lsvs_d_miss=(vsd *)malloc(confs*sizeof(vsd));
 
 	for (i=0; i < confs; i++) {
 		lsvs_d_miss[i].c=0;
 		lsvs_d_miss[i].ttfb=0.0;
 		lsvs_d_miss[i].ttlb=0.0;
 		lsvs_d_miss[i].dm=SOCKETS_MAX;
-		lsvs_d_miss[i].dttfb=(double *)malloc(lsvs_d_miss[i].dm*sizeof(double));
-		lsvs_d_miss[i].dttlb=(double *)malloc(lsvs_d_miss[i].dm*sizeof(double));
-
+		lsvs_d_miss[i].dttfb=(double **)malloc(sizeof(double *));
+		lsvs_d_miss[i].dttlb=(double **)malloc(sizeof(double *));
+		*(lsvs_d_miss[i].dttfb)=(double *)malloc(lsvs_d_miss[i].dm*sizeof(double));
+		*(lsvs_d_miss[i].dttlb)=(double *)malloc(lsvs_d_miss[i].dm*sizeof(double));
 	}
 
-	lsvs_d_hit=(vsdf *)malloc(confs*sizeof(vsdf));
+	lsvs_d_hit=(vsd *)malloc(confs*sizeof(vsd));
 
 	for (i=0; i < confs; i++) {
 		lsvs_d_hit[i].c=0;
 		lsvs_d_hit[i].ttfb=0.0;
 		lsvs_d_hit[i].ttlb=0.0;
 		lsvs_d_hit[i].dm=SOCKETS_MAX;
-		lsvs_d_hit[i].dttfb=(double *)malloc(lsvs_d_hit[i].dm*sizeof(double));
-		lsvs_d_hit[i].dttlb=(double *)malloc(lsvs_d_hit[i].dm*sizeof(double));
-
+		lsvs_d_hit[i].dttfb=(double **)malloc(sizeof(double *));
+		lsvs_d_hit[i].dttlb=(double **)malloc(sizeof(double *));
+		*(lsvs_d_hit[i].dttfb)=(double *)malloc(lsvs_d_hit[i].dm*sizeof(double));
+		*(lsvs_d_hit[i].dttlb)=(double *)malloc(lsvs_d_hit[i].dm*sizeof(double));
 	}
 }
 
@@ -315,15 +320,18 @@ lsvs_cleanup()
 	unsigned confs=config_size();
 
 	for (i=0; i < confs; i++) {
-		free(lsvs_d_miss[i].dttfb);
-		free(lsvs_d_miss[i].dttlb);
+		free(*(lsvs_d_miss[i].dttfb));
+		free(*(lsvs_d_miss[i].dttlb));
+        free(lsvs_d_miss[i].dttfb);
+        free(lsvs_d_miss[i].dttlb);
 	}
-
 	free(lsvs_d_miss);
 
 	for (i=0; i < confs; i++) {
-		free(lsvs_d_hit[i].dttfb);
-		free(lsvs_d_hit[i].dttlb);
+		free(*(lsvs_d_hit[i].dttfb));
+		free(*(lsvs_d_hit[i].dttlb));
+        free(lsvs_d_hit[i].dttfb);
+        free(lsvs_d_hit[i].dttlb);
 	}
 
 	free(lsvs_d_hit);
@@ -332,44 +340,82 @@ lsvs_cleanup()
 static void
 lsvs_add(enum vcachestatus handl, unsigned i, double ttfb, double ttlb)
 {
+    double *dttfb;
+    double *dttlb;
+    double *dptr;
+
 	switch (handl) {
 		case hit:
 			lsvs_d_hit[i].ttfb+=ttfb;
 			lsvs_d_hit[i].ttlb+=ttlb;
-			lsvs_d_hit[i].dttfb[lsvs_d_hit[i].c]=ttfb;
-			lsvs_d_hit[i].dttlb[lsvs_d_hit[i].c]=ttlb;
+			dptr=*(lsvs_d_hit[i].dttfb);
+            dptr[lsvs_d_hit[i].c]=ttfb;
+			dptr=*(lsvs_d_hit[i].dttlb);
+            dptr[lsvs_d_hit[i].c]=ttlb;
+            dptr=NULL;
 			lsvs_d_hit[i].c++;
 
-			if (lsvs_d_hit[i].c >= (ULONG_MAX -1)) {
+			if (lsvs_d_hit[i].c >= ULONG_MAX) {
+	            fprintf(stderr, "D----> Max c for HIT %i vs %i\n", lsvs_d_hit[i].c, ULONG_MAX);
 				showtime=1;
 			} else if (lsvs_d_hit[i].c >= lsvs_d_hit[i].dm) {
 				if ((lsvs_d_hit[i].dm*2) > ULONG_MAX) {
 					lsvs_d_hit[i].dm=ULONG_MAX;
+	                fprintf(stderr, "D----> hit.dm = ULONG_MAX(%i)\n", ULONG_MAX);
 				} else {
 					lsvs_d_hit[i].dm*=2;
+	                fprintf(stderr, "D----> hit.dm = %i\n", lsvs_d_hit[i].dm);
 				}
-				lsvs_d_hit[i].dttfb=(double *)realloc(lsvs_d_hit[i].dttfb, (sizeof(double)*lsvs_d_miss[i].dm));
-				lsvs_d_hit[i].dttlb=(double *)realloc(lsvs_d_hit[i].dttlb, (sizeof(double)*lsvs_d_miss[i].dm));
+
+	            if(!(dttfb=(double *)realloc(*(lsvs_d_hit[i].dttfb), (sizeof(double)*lsvs_d_hit[i].dm)))) {
+	                raise(SIGINT);
+	            } else {
+	                *(lsvs_d_hit[i].dttfb)=dttfb;
+					dttfb=NULL;
+	            }
+	            if(!(dttlb=(double *)realloc(*(lsvs_d_hit[i].dttlb), (sizeof(double)*lsvs_d_hit[i].dm)))) {
+	                raise(SIGINT);
+	            } else {
+	                *(lsvs_d_hit[i].dttlb)=dttlb;
+					dttlb=NULL;
+	            }
 			}
 			break;
 		case miss:
 		case pass:
 			lsvs_d_miss[i].ttfb+=ttfb;
 			lsvs_d_miss[i].ttlb+=ttlb;
-			lsvs_d_miss[i].dttfb[lsvs_d_miss[i].c]=ttfb;
-			lsvs_d_miss[i].dttlb[lsvs_d_miss[i].c]=ttlb;
+			dptr=*(lsvs_d_miss[i].dttfb);
+            dptr[lsvs_d_miss[i].c]=ttfb;
+			dptr=*(lsvs_d_miss[i].dttlb);
+            dptr[lsvs_d_miss[i].c]=ttlb;
+            dptr=NULL;
 			lsvs_d_miss[i].c++;
 
 			if (lsvs_d_miss[i].c >= ULONG_MAX) {
+	            fprintf(stderr, "D----> Max c for MISS %i vs %i\n", lsvs_d_miss[i].c, ULONG_MAX);
 				showtime=1;
 			} else if (lsvs_d_miss[i].c >= lsvs_d_miss[i].dm) {
 				if ((lsvs_d_miss[i].dm*2) > ULONG_MAX) {
 					lsvs_d_miss[i].dm=ULONG_MAX;
+	                fprintf(stderr, "D----> miss.dm = ULONG_MAX(%i)\n", ULONG_MAX);
 				} else {
 					lsvs_d_miss[i].dm*=2;
+	                fprintf(stderr, "D----> miss.dm = %i\n", lsvs_d_hit[i].dm);
 				}
-				lsvs_d_miss[i].dttfb=(double *)realloc(lsvs_d_miss[i].dttfb, (sizeof(double)*lsvs_d_miss[i].dm));
-				lsvs_d_miss[i].dttlb=(double *)realloc(lsvs_d_miss[i].dttlb, (sizeof(double)*lsvs_d_miss[i].dm));
+
+	            if(!(dttfb=(double *)realloc(*(lsvs_d_miss[i].dttfb), (sizeof(double)*lsvs_d_miss[i].dm)))) {
+	                raise(SIGINT);
+	            } else {
+	                *(lsvs_d_miss[i].dttfb)=dttfb;
+					dttfb=NULL;
+	            }
+	            if(!(dttlb=(double *)realloc(*(lsvs_d_miss[i].dttlb), (sizeof(double)*lsvs_d_miss[i].dm)))) {
+	                raise(SIGINT);
+	            } else {
+	                *(lsvs_d_miss[i].dttlb)=dttlb;
+					dttlb=NULL;
+	            }
 			}
 			break;
 	}
@@ -393,14 +439,15 @@ lsvs_compute()
 	int	i,j,jm;
 	double wttfb,wttlb;
 	unsigned confs=config_size();
+    double *dptr;
 
 	FILE *f = log_open();
 
 	for (i = 0; i < confs; i++) {
 
 		if (lsvs_d_miss[i].c > 0) {
-			qsort(lsvs_d_miss[i].dttfb, lsvs_d_miss[i].c, sizeof(double), lsvs_qsort_cmp);
-			qsort(lsvs_d_miss[i].dttfb, lsvs_d_miss[i].c, sizeof(double), lsvs_qsort_cmp);
+			qsort(*(lsvs_d_miss[i].dttfb), lsvs_d_miss[i].c, sizeof(double), lsvs_qsort_cmp);
+			qsort(*(lsvs_d_miss[i].dttfb), lsvs_d_miss[i].c, sizeof(double), lsvs_qsort_cmp);
 
 			wttfb=0.0;
 			wttlb=0.0;
@@ -408,24 +455,27 @@ lsvs_compute()
 
 			if (jm > 0) {
 				for (j = 0; j < jm; j++) {
-					wttfb+=lsvs_d_miss[i].dttfb[j];
-					wttlb+=lsvs_d_miss[i].dttlb[j];
+                    dptr=*(lsvs_d_miss[i].dttfb);
+					wttfb+=dptr[j];
+                    dptr=*(lsvs_d_miss[i].dttlb);
+					wttlb+=dptr[j];
+                    dptr=NULL;
 				}
 
 				wttfb/=(double)jm;
 				wttlb/=(double)jm;
 			}
-			fprintf(f, "%s ", conf[i].key);
+			fprintf(f, "%s ", *(conf[i].key));
 			fprintf(f, "count_miss:%lu ", lsvs_d_miss[i].c);
 			fprintf(f, "avarage_miss:%i ",(int)floor(lsvs_d_miss[i].ttfb*1000/lsvs_d_miss[i].c));
 			fprintf(f, "10wa_miss:%i ",(int)floor(wttfb*1000));
 		} else {
-			fprintf(f, "%s count_miss:%lu avarage_miss:0 10wa_miss:0 ", conf[i].key, lsvs_d_miss[i].c);
+			fprintf(f, "%s count_miss:%lu avarage_miss:0 10wa_miss:0 ", *(conf[i].key), lsvs_d_miss[i].c);
 		}
 
 		if (lsvs_d_hit[i].c > 0) {
-			qsort(lsvs_d_hit[i].dttfb, lsvs_d_hit[i].c, sizeof(double), lsvs_qsort_cmp);
-			qsort(lsvs_d_hit[i].dttfb, lsvs_d_hit[i].c, sizeof(double), lsvs_qsort_cmp);
+			qsort(*(lsvs_d_hit[i].dttfb), lsvs_d_hit[i].c, sizeof(double), lsvs_qsort_cmp);
+			qsort(*(lsvs_d_hit[i].dttfb), lsvs_d_hit[i].c, sizeof(double), lsvs_qsort_cmp);
 
 			wttfb=0.0;
 			wttlb=0.0;
@@ -433,8 +483,11 @@ lsvs_compute()
 
 			if (jm > 0) {
 				for (j = 0; j < jm; j++) {
-					wttfb+=lsvs_d_hit[i].dttfb[j];
-					wttlb+=lsvs_d_hit[i].dttlb[j];
+                    dptr=*(lsvs_d_hit[i].dttfb);
+					wttfb+=dptr[j];
+                    dptr=*(lsvs_d_hit[i].dttlb);
+					wttlb+=dptr[j];
+                    dptr=NULL;
 				}
 
 				wttfb/=(double)jm;
@@ -455,13 +508,13 @@ lsvs_compute()
 
 /* Collecting & Analyzing ----------------------------------------------------*/
 
-//get status of vslf object
+//get status of vsl object
 static bool
-vslf_status(vslf *ptr)
+vsl_status(vsl *ptr)
 {
 	if (ptr->error == true
 		|| ptr->status== 0
-		|| ptr->url == NULL
+		|| *(ptr->url) == NULL
 		|| ptr->ttfb == 0.0
 		|| ptr->ttlb == 0.0
 		|| ptr->req == 0
@@ -472,42 +525,48 @@ vslf_status(vslf *ptr)
 	}
 }
 
-//init vslf object
+//init vsl object
 static void
-vslf_init(vslf *ptr)
+vsl_init(vsl *ptr)
 {
 	ptr->error=false;
 	ptr->status=0;
-	ptr->sstatus=NULL;
-	ptr->url=NULL;
+	ptr->sstatus=(char **)malloc(sizeof(char *));
+	*(ptr->sstatus)=NULL;
+	ptr->url=(char **)malloc(sizeof(char *));
+	*(ptr->url)=NULL;
 	ptr->ttfb=0.0;
 	ptr->ttlb=0.0;
 	ptr->req=0;
-	ptr->sreq=NULL;
+	ptr->sreq=(char **)malloc(sizeof(char *));
+	*(ptr->sreq)=NULL;
 	ptr->handling=0;
 }
 
-//clear vslf object
+//clear vsl object
 static void
-vslf_cleanup(vslf *ptr)
+vsl_cleanup(vsl *ptr)
 {
-	if (ptr->sstatus != NULL) {
-		free(ptr->sstatus);
+	if (*(ptr->sstatus) != NULL) {
+		free(*(ptr->sstatus));
 	}
-	if (ptr->url != NULL) {
-		free(ptr->url);
+	free(ptr->sstatus);
+	if (*(ptr->url) != NULL) {
+		free(*(ptr->url));
 	}
-	if (ptr->sreq != NULL) {
-		free(ptr->sreq);
+	free(ptr->url);
+	if (*(ptr->sreq) != NULL) {
+		free(*(ptr->sreq));
 	}
+	free(ptr->sreq);
 }
 
-//clear vslf object
+//clear vsl object
 static void
-vslf_clear(vslf *ptr)
+vsl_clear(vsl *ptr)
 {
-	vslf_cleanup(ptr);
-	vslf_init(ptr);
+	vsl_cleanup(ptr);
+	vsl_init(ptr);
 }
 
 //init collect buffers
@@ -517,24 +576,24 @@ collect_init()
 	unsigned i;
 
 	for (i = 0; i < SOCKETS_MAX; i++) {
-		vslf_init(&(ob[i]));
+		vsl_init(&(ob[i]));
 	}
 
 }
 
 //analyze collected data
 static void
-collect_analyze(int fd, const struct VSM_data *vd)
+collect_analyze(int fd)
 {
 	unsigned i;
 	unsigned idx=0;
 
-	if (vslf_status(&(ob[fd])) && VSL_Matched(vd, bitmap[fd])) {
+	if (vsl_status(&(ob[fd])) && VSL_Matched(vd, bitmap[fd])) {
 		if ((ob[fd].status > 399) && (ob[fd].status < 600 ) && (ob[fd].status != 501)) {
 			/* Error part */
 			for (i=1; i < conft[CONFT_ERR][0]; i++) {
 				idx=conft[CONFT_ERR][i];
-				if (regexec(&(conf[idx].reg), ob[fd].sstatus, 0, NULL, 0) == 0) {
+				if (regexec(&(conf[idx].reg), *(ob[fd].sstatus), 0, NULL, 0) == 0) {
 					lsvs_add(ob[fd].handling , idx, ob[fd].ttfb, ob[fd].ttlb);
 					break;
 				}
@@ -544,7 +603,7 @@ collect_analyze(int fd, const struct VSM_data *vd)
 			for (i=1; i < conft[CONFT_INV][0]; i++) {
 				/* All part */
 				idx=conft[CONFT_INV][i];
-				if (regexec(&(conf[idx].reg), ob[fd].sreq, 0, NULL, 0) == 0) {
+				if (regexec(&(conf[idx].reg), *(ob[fd].sreq), 0, NULL, 0) == 0) {
 					lsvs_add(ob[fd].handling , idx, ob[fd].ttfb, ob[fd].ttlb);
 				}
 			}
@@ -552,7 +611,7 @@ collect_analyze(int fd, const struct VSM_data *vd)
 			for (i=1; i < conft[CONFT_ALL][0]; i++) {
 				/* All part */
 				idx=conft[CONFT_ALL][i];
-				if (regexec(&(conf[idx].reg), ob[fd].url, 0, NULL, 0) == 0) {
+				if (regexec(&(conf[idx].reg), *(ob[fd].url), 0, NULL, 0) == 0) {
 					lsvs_add(ob[fd].handling , idx, ob[fd].ttfb, ob[fd].ttlb);
 				}
 			}
@@ -560,16 +619,15 @@ collect_analyze(int fd, const struct VSM_data *vd)
 			for (i=1; i < conft[CONFT_ONE][0]; i++) {
 				/* Only first occurence */
 				idx=conft[CONFT_ONE][i];
-				if (regexec(&(conf[idx].reg), ob[fd].url, 0, NULL, 0) == 0) {
+				if (regexec(&(conf[idx].reg), *(ob[fd].url), 0, NULL, 0) == 0) {
 					lsvs_add(ob[fd].handling , idx, ob[fd].ttfb, ob[fd].ttlb);
 					break;
 				}
 			}
 		}
 	}
-	//
 	bitmap[fd] = 0;
-	vslf_clear(&(ob[fd]));
+	vsl_clear(&(ob[fd]));
 }
 
 //cleanup data objects at the end
@@ -579,7 +637,7 @@ collect_cleanup()
 	unsigned i;
 
 	for (i = 0; i < SOCKETS_MAX; i++) {
-		vslf_cleanup(&(ob[i]));
+		vsl_cleanup(&(ob[i]));
 		bitmap[i] = 0;
 	}
 }
@@ -589,6 +647,10 @@ collect(void *priv, enum VSL_tag_e tag, unsigned fd, unsigned len,
 	    unsigned spec, const char *ptr, uint64_t bm)
 {
 	struct VSM_data *vd = priv;
+    /* SIGINT was raised so we need to exit */
+    if (sigexit > 0) {
+        return (-1);
+    }
 
 	/* SIGUSR1 was raised so we need to output data */
 	if (showtime > 0) {
@@ -630,11 +692,19 @@ collect(void *priv, enum VSL_tag_e tag, unsigned fd, unsigned len,
 				ob[fd].req = INVALID;
 			}
 
-			ob[fd].sreq = strndup(ptr, len);
+            if (*(ob[fd].sreq) != NULL) {
+                free(*(ob[fd].sreq));
+                *(ob[fd].sreq)=NULL;
+            }
+			*(ob[fd].sreq) = strndup(ptr, len);
 			break;
 		case SLT_TxURL:
 		case SLT_RxURL:
-			ob[fd].url = strndup(ptr, len);
+            if (*(ob[fd].url) != NULL) {
+                free(*(ob[fd].url));
+                *(ob[fd].url)=NULL;
+            }
+			*(ob[fd].url) = strndup(ptr, len);
 			break;
 		case SLT_RxStatus:
 		case SLT_TxStatus:
@@ -643,7 +713,11 @@ collect(void *priv, enum VSL_tag_e tag, unsigned fd, unsigned len,
 				ob[fd].status = 0;
 				ob[fd].error=true;
 			} else {
-				ob[fd].sstatus = strndup(ptr, len);
+                if (*(ob[fd].sstatus) != NULL) {
+                    free(*(ob[fd].sstatus));
+                    *(ob[fd].sstatus)=NULL;
+                }
+				*(ob[fd].sstatus) = strndup(ptr, len);
 			}
 			break;
 		case SLT_ReqEnd:
@@ -657,7 +731,7 @@ collect(void *priv, enum VSL_tag_e tag, unsigned fd, unsigned len,
 			}
 		case SLT_BackendClose:
 		case SLT_BackendReuse:
-			collect_analyze(fd, vd);
+			collect_analyze(fd);
 			break;
 		default:
 			break;
@@ -684,11 +758,10 @@ main(int argc, char * const *argv)
 	const char *P_arg = NULL;
 	const char *f_arg = NULL;
 	struct vpf_fh *pfh = NULL;
-	struct VSM_data *vd;
 
-	signal(SIGABRT, cleanup);
-	signal(SIGTERM, cleanup);
-	signal(SIGINT, cleanup);
+	signal(SIGABRT, sigterm);
+	signal(SIGTERM, sigterm);
+	signal(SIGINT, sigterm);
 	signal(SIGUSR1, output);
 
 	vd = VSM_New();
@@ -772,8 +845,9 @@ main(int argc, char * const *argv)
 
 	/* run */
 	showtime=0;
-	while (1) {
-		i = VSL_Dispatch(vd, collect, vd);
+    sigexit=0;
+	while (!sigexit) {
+		i = VSL_Dispatch(vd, collect, NULL);
 		if (i == 0) {
 			collect_cleanup();
 			AZ(fflush(stdout));
@@ -781,26 +855,32 @@ main(int argc, char * const *argv)
 		else if (i < 0)
 			break;
 	}
-	collect_cleanup();
 
 	/* clear pidfile */
 	if (pfh != NULL)
 		VPF_Remove(pfh);
 
-	exit(0);
+	cleanup(sigexit);
 }
 
 /* Signal handling  ---------------------------------------------------*/
 
 static void
+sigterm(int signal)
+{
+    sigexit=signal;
+}
+
+static void
 cleanup(int signal)
 {
-	fprintf(stderr, "\nStopped by %i!\n\n", signal);
-
+    fprintf(stderr, "\nStopped by %i!\n\n", signal);
+    lsvs_compute();
 	lsvs_cleanup();
 	collect_cleanup();
 	config_cleanup();
-	exit(1);
+    VSM_Delete(vd);
+    exit(0);
 }
 
 static void
