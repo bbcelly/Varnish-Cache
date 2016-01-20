@@ -38,9 +38,9 @@ typedef struct vsl_s {
 
 typedef struct vsd_s {
 	unsigned long	c;		//counter
-	double			ttfb;	//total time
+	long double			ttfb;	//total time
 	double			**dttfb;	//array of times
-	double			ttlb;	//total time
+	long double			ttlb;	//total time
 	double			**dttlb;	//array of times
 	unsigned long	dm;		//max size of array
 } vsd;						//Varnish Statistics Data Field

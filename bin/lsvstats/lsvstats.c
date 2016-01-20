@@ -53,7 +53,7 @@
 #include "lsvstats.h"
 
 /* Globals -------------------------------------------------------------------*/
-struct VSM_data *vd;
+static struct VSM_data *vd;
 
 static volatile sig_atomic_t showtime;
 static volatile sig_atomic_t sigexit;
@@ -342,29 +342,24 @@ lsvs_add(enum vcachestatus handl, unsigned i, double ttfb, double ttlb)
 {
     double *dttfb;
     double *dttlb;
-    double *dptr;
 
 	switch (handl) {
 		case hit:
-			lsvs_d_hit[i].ttfb+=ttfb;
-			lsvs_d_hit[i].ttlb+=ttlb;
-			dptr=*(lsvs_d_hit[i].dttfb);
-            dptr[lsvs_d_hit[i].c]=ttfb;
-			dptr=*(lsvs_d_hit[i].dttlb);
-            dptr[lsvs_d_hit[i].c]=ttlb;
-            dptr=NULL;
+			lsvs_d_hit[i].ttfb+=(long double) ttfb;
+			lsvs_d_hit[i].ttlb+=(long double) ttlb;
+
+            *(*(lsvs_d_hit[i].dttfb)+lsvs_d_hit[i].c)=ttfb;
+			*(*(lsvs_d_hit[i].dttlb)+lsvs_d_hit[i].c)=ttlb;
+
 			lsvs_d_hit[i].c++;
 
 			if (lsvs_d_hit[i].c >= ULONG_MAX) {
-	            fprintf(stderr, "D----> Max c for HIT %i vs %i\n", lsvs_d_hit[i].c, ULONG_MAX);
 				showtime=1;
 			} else if (lsvs_d_hit[i].c >= lsvs_d_hit[i].dm) {
 				if ((lsvs_d_hit[i].dm*2) > ULONG_MAX) {
 					lsvs_d_hit[i].dm=ULONG_MAX;
-	                fprintf(stderr, "D----> hit.dm = ULONG_MAX(%i)\n", ULONG_MAX);
 				} else {
 					lsvs_d_hit[i].dm*=2;
-	                fprintf(stderr, "D----> hit.dm = %i\n", lsvs_d_hit[i].dm);
 				}
 
 	            if(!(dttfb=(double *)realloc(*(lsvs_d_hit[i].dttfb), (sizeof(double)*lsvs_d_hit[i].dm)))) {
@@ -383,25 +378,21 @@ lsvs_add(enum vcachestatus handl, unsigned i, double ttfb, double ttlb)
 			break;
 		case miss:
 		case pass:
-			lsvs_d_miss[i].ttfb+=ttfb;
-			lsvs_d_miss[i].ttlb+=ttlb;
-			dptr=*(lsvs_d_miss[i].dttfb);
-            dptr[lsvs_d_miss[i].c]=ttfb;
-			dptr=*(lsvs_d_miss[i].dttlb);
-            dptr[lsvs_d_miss[i].c]=ttlb;
-            dptr=NULL;
+			lsvs_d_miss[i].ttfb+=(long double) ttfb;
+			lsvs_d_miss[i].ttlb+=(long double) ttlb;
+
+			*(*(lsvs_d_miss[i].dttfb)+lsvs_d_miss[i].c)=ttfb;
+			*(*(lsvs_d_miss[i].dttlb)+lsvs_d_miss[i].c)=ttlb;
+
 			lsvs_d_miss[i].c++;
 
 			if (lsvs_d_miss[i].c >= ULONG_MAX) {
-	            fprintf(stderr, "D----> Max c for MISS %i vs %i\n", lsvs_d_miss[i].c, ULONG_MAX);
 				showtime=1;
 			} else if (lsvs_d_miss[i].c >= lsvs_d_miss[i].dm) {
 				if ((lsvs_d_miss[i].dm*2) > ULONG_MAX) {
 					lsvs_d_miss[i].dm=ULONG_MAX;
-	                fprintf(stderr, "D----> miss.dm = ULONG_MAX(%i)\n", ULONG_MAX);
 				} else {
 					lsvs_d_miss[i].dm*=2;
-	                fprintf(stderr, "D----> miss.dm = %i\n", lsvs_d_hit[i].dm);
 				}
 
 	            if(!(dttfb=(double *)realloc(*(lsvs_d_miss[i].dttfb), (sizeof(double)*lsvs_d_miss[i].dm)))) {
@@ -436,10 +427,9 @@ lsvs_qsort_cmp (const void * a, const void * b)
 static void
 lsvs_compute()
 {
-	int	i,j,jm;
-	double wttfb,wttlb;
+	unsigned long int i,j,jm;
+	long double wttfb,wttlb;
 	unsigned confs=config_size();
-    double *dptr;
 
 	FILE *f = log_open();
 
@@ -447,55 +437,49 @@ lsvs_compute()
 
 		if (lsvs_d_miss[i].c > 0) {
 			qsort(*(lsvs_d_miss[i].dttfb), lsvs_d_miss[i].c, sizeof(double), lsvs_qsort_cmp);
-			qsort(*(lsvs_d_miss[i].dttfb), lsvs_d_miss[i].c, sizeof(double), lsvs_qsort_cmp);
+			qsort(*(lsvs_d_miss[i].dttlb), lsvs_d_miss[i].c, sizeof(double), lsvs_qsort_cmp);
 
 			wttfb=0.0;
 			wttlb=0.0;
-			jm=(int)floor((double)(lsvs_d_miss[i].c*0.1));
+			jm=(unsigned long int)lround((double)lsvs_d_miss[i].c*0.1);
 
 			if (jm > 0) {
 				for (j = 0; j < jm; j++) {
-                    dptr=*(lsvs_d_miss[i].dttfb);
-					wttfb+=dptr[j];
-                    dptr=*(lsvs_d_miss[i].dttlb);
-					wttlb+=dptr[j];
-                    dptr=NULL;
+                	wttfb= wttfb + *(*(lsvs_d_miss[i].dttfb)+j);
+					wttlb= wttlb + *(*(lsvs_d_miss[i].dttlb)+j);
 				}
 
-				wttfb/=(double)jm;
-				wttlb/=(double)jm;
+				wttfb=wttfb/jm;
+				wttlb=wttlb/jm;
 			}
 			fprintf(f, "%s ", *(conf[i].key));
 			fprintf(f, "count_miss:%lu ", lsvs_d_miss[i].c);
-			fprintf(f, "avarage_miss:%i ",(int)floor(lsvs_d_miss[i].ttfb*1000/lsvs_d_miss[i].c));
-			fprintf(f, "10wa_miss:%i ",(int)floor(wttfb*1000));
+			fprintf(f, "avarage_miss:%lli ",llroundl((lsvs_d_miss[i].ttfb*1000)/lsvs_d_miss[i].c));
+			fprintf(f, "10wa_miss:%lli ",llroundl(wttfb*1000));
 		} else {
 			fprintf(f, "%s count_miss:%lu avarage_miss:0 10wa_miss:0 ", *(conf[i].key), lsvs_d_miss[i].c);
 		}
 
 		if (lsvs_d_hit[i].c > 0) {
 			qsort(*(lsvs_d_hit[i].dttfb), lsvs_d_hit[i].c, sizeof(double), lsvs_qsort_cmp);
-			qsort(*(lsvs_d_hit[i].dttfb), lsvs_d_hit[i].c, sizeof(double), lsvs_qsort_cmp);
+			qsort(*(lsvs_d_hit[i].dttlb), lsvs_d_hit[i].c, sizeof(double), lsvs_qsort_cmp);
 
 			wttfb=0.0;
 			wttlb=0.0;
-			jm=(int)floor((double)(lsvs_d_hit[i].c*0.1));
+			jm=(unsigned long int)lround((double)lsvs_d_hit[i].c*0.1);
 
 			if (jm > 0) {
 				for (j = 0; j < jm; j++) {
-                    dptr=*(lsvs_d_hit[i].dttfb);
-					wttfb+=dptr[j];
-                    dptr=*(lsvs_d_hit[i].dttlb);
-					wttlb+=dptr[j];
-                    dptr=NULL;
+                    wttfb= wttfb + *(*(lsvs_d_hit[i].dttfb)+j);
+                    wttlb= wttlb + *(*(lsvs_d_hit[i].dttlb)+j);
 				}
 
-				wttfb/=(double)jm;
-				wttlb/=(double)jm;
+				wttfb=wttfb/jm;
+				wttlb=wttlb/jm;
 			}
 			fprintf(f, "count_hit:%lu ", lsvs_d_hit[i].c);
-			fprintf(f, "avarage_hit:%i ", (int)floor(lsvs_d_hit[i].ttfb*1000/lsvs_d_hit[i].c));
-			fprintf(f, "10wa_hit:%i\n", (int)floor(wttfb*1000));
+			fprintf(f, "avarage_hit:%lli ", llroundl((lsvs_d_hit[i].ttfb*1000)/lsvs_d_hit[i].c));
+			fprintf(f, "10wa_hit:%lli\n", llroundl(wttfb*1000));
 		} else {
 			fprintf(f, "count_hit:%lu avarage_hit:0 10wa_hit:0\n", lsvs_d_hit[i].c);
 		}
@@ -515,8 +499,8 @@ vsl_status(vsl *ptr)
 	if (ptr->error == true
 		|| ptr->status== 0
 		|| *(ptr->url) == NULL
-		|| ptr->ttfb == 0.0
-		|| ptr->ttlb == 0.0
+		|| ptr->ttfb != ptr->ttfb
+		|| ptr->ttlb != ptr->ttlb
 		|| ptr->req == 0
 		|| ptr->handling == 0) {
 		return(false);
@@ -559,6 +543,8 @@ vsl_cleanup(vsl *ptr)
 		free(*(ptr->sreq));
 	}
 	free(ptr->sreq);
+	ptr->ttfb=0.0;
+	ptr->ttlb=0.0;
 }
 
 //clear vsl object
@@ -646,7 +632,7 @@ static int
 collect(void *priv, enum VSL_tag_e tag, unsigned fd, unsigned len,
 	    unsigned spec, const char *ptr, uint64_t bm)
 {
-	struct VSM_data *vd = priv;
+	(void)priv;
     /* SIGINT was raised so we need to exit */
     if (sigexit > 0) {
         return (-1);
@@ -721,8 +707,6 @@ collect(void *priv, enum VSL_tag_e tag, unsigned fd, unsigned len,
 			}
 			break;
 		case SLT_ReqEnd:
-			ob[fd].ttfb = 0.0;
-			ob[fd].ttlb = 0.0;
 			if (sscanf(ptr, "%*u %*u.%*u %*u.%*u %*u.%*u %lf %lf", &(ob[fd].ttfb), &(ob[fd].ttlb)) != 2) {
 				ob[fd].ttfb = 0.0;
 				ob[fd].ttlb = 0.0;
