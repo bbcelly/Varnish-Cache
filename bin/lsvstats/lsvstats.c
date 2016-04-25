@@ -78,6 +78,7 @@ log_open()
 
 	if (w_arg) {
 		if ((of = fopen(w_arg, a_flag ? "a" : "w")) == NULL) {
+			fprintf(stderr, "Error: Couldn't open output file!\n");
 			perror(w_arg);
 			exit(1);
 		}
@@ -118,6 +119,7 @@ config_open(const char *f_arg)
 
 	file = fopen(f_arg, "r");
 	if (!file) {
+		fprintf(stderr, "Error: Couldn't open config file!\n");
 		perror(f_arg);
 		exit(1);
 	}
@@ -159,7 +161,7 @@ config_read(const char *f_arg)
 	    || regcomp(&recomm, "^[[:space:]]*[#;].*$", REG_EXTENDED | REG_ICASE | REG_NOSUB)
 	   ) {
 		fprintf(stderr, "Internal Error - Regexp compilation failed!\n");
-	    cleanup(SIGKILL);
+		cleanup(SIGKILL);
 	}
 
 	confs = 0;
@@ -322,16 +324,16 @@ lsvs_cleanup()
 	for (i=0; i < confs; i++) {
 		free(*(lsvs_d_miss[i].dttfb));
 		free(*(lsvs_d_miss[i].dttlb));
-        free(lsvs_d_miss[i].dttfb);
-        free(lsvs_d_miss[i].dttlb);
+		free(lsvs_d_miss[i].dttfb);
+		free(lsvs_d_miss[i].dttlb);
 	}
 	free(lsvs_d_miss);
 
 	for (i=0; i < confs; i++) {
 		free(*(lsvs_d_hit[i].dttfb));
 		free(*(lsvs_d_hit[i].dttlb));
-        free(lsvs_d_hit[i].dttfb);
-        free(lsvs_d_hit[i].dttlb);
+		free(lsvs_d_hit[i].dttfb);
+		free(lsvs_d_hit[i].dttlb);
 	}
 
 	free(lsvs_d_hit);
@@ -340,40 +342,44 @@ lsvs_cleanup()
 static void
 lsvs_add(enum vcachestatus handl, unsigned i, double ttfb, double ttlb)
 {
-    double *dttfb;
-    double *dttlb;
+	double *dttfb;
+	double *dttlb;
 
 	switch (handl) {
 		case hit:
 			lsvs_d_hit[i].ttfb+=(long double) ttfb;
 			lsvs_d_hit[i].ttlb+=(long double) ttlb;
 
-            *(*(lsvs_d_hit[i].dttfb)+lsvs_d_hit[i].c)=ttfb;
+			*(*(lsvs_d_hit[i].dttfb)+lsvs_d_hit[i].c)=ttfb;
 			*(*(lsvs_d_hit[i].dttlb)+lsvs_d_hit[i].c)=ttlb;
 
 			lsvs_d_hit[i].c++;
 
-			if (lsvs_d_hit[i].c >= ULONG_MAX) {
-				showtime=1;
-			} else if (lsvs_d_hit[i].c >= lsvs_d_hit[i].dm) {
-				if ((lsvs_d_hit[i].dm*2) > ULONG_MAX) {
-					lsvs_d_hit[i].dm=ULONG_MAX;
-				} else {
-					lsvs_d_hit[i].dm*=2;
-				}
+			if (lsvs_d_hit[i].c < ULONG_MAX) {
+				if (lsvs_d_hit[i].c >= lsvs_d_hit[i].dm) {
+					if ((lsvs_d_hit[i].dm*2) < ULONG_MAX) {
+						lsvs_d_hit[i].dm=lsvs_d_hit[i].dm*2;
+					} else if (lsvs_d_hit[i].dm == ULONG_MAX) {
+						return;
+					} else {
+						lsvs_d_hit[i].dm=ULONG_MAX;
+					}
 
-	            if(!(dttfb=(double *)realloc(*(lsvs_d_hit[i].dttfb), (sizeof(double)*lsvs_d_hit[i].dm)))) {
-	                raise(SIGINT);
-	            } else {
-	                *(lsvs_d_hit[i].dttfb)=dttfb;
-					dttfb=NULL;
-	            }
-	            if(!(dttlb=(double *)realloc(*(lsvs_d_hit[i].dttlb), (sizeof(double)*lsvs_d_hit[i].dm)))) {
-	                raise(SIGINT);
-	            } else {
-	                *(lsvs_d_hit[i].dttlb)=dttlb;
-					dttlb=NULL;
-	            }
+					if(!(dttfb=(double *)realloc(*(lsvs_d_hit[i].dttfb), (sizeof(double)*lsvs_d_hit[i].dm)))) {
+						raise(SIGINT);
+					} else {
+						*(lsvs_d_hit[i].dttfb)=dttfb;
+						dttfb=NULL;
+					}
+					if(!(dttlb=(double *)realloc(*(lsvs_d_hit[i].dttlb), (sizeof(double)*lsvs_d_hit[i].dm)))) {
+						raise(SIGINT);
+					} else {
+						*(lsvs_d_hit[i].dttlb)=dttlb;
+						dttlb=NULL;
+					}
+				}
+			} else {
+				showtime=1;
 			}
 			break;
 		case miss:
@@ -386,27 +392,31 @@ lsvs_add(enum vcachestatus handl, unsigned i, double ttfb, double ttlb)
 
 			lsvs_d_miss[i].c++;
 
-			if (lsvs_d_miss[i].c >= ULONG_MAX) {
-				showtime=1;
-			} else if (lsvs_d_miss[i].c >= lsvs_d_miss[i].dm) {
-				if ((lsvs_d_miss[i].dm*2) > ULONG_MAX) {
-					lsvs_d_miss[i].dm=ULONG_MAX;
-				} else {
-					lsvs_d_miss[i].dm*=2;
-				}
+			if (lsvs_d_miss[i].c < ULONG_MAX) {
+				if (lsvs_d_miss[i].c >= lsvs_d_miss[i].dm) {
+					if ((lsvs_d_miss[i].dm*2) < ULONG_MAX) {
+						lsvs_d_miss[i].dm=lsvs_d_miss[i].dm*2;
+					} else if (lsvs_d_miss[i].dm == ULONG_MAX) {
+						return;
+					} else {
+						lsvs_d_miss[i].dm=ULONG_MAX;
+					}
 
-	            if(!(dttfb=(double *)realloc(*(lsvs_d_miss[i].dttfb), (sizeof(double)*lsvs_d_miss[i].dm)))) {
-	                raise(SIGINT);
-	            } else {
-	                *(lsvs_d_miss[i].dttfb)=dttfb;
-					dttfb=NULL;
-	            }
-	            if(!(dttlb=(double *)realloc(*(lsvs_d_miss[i].dttlb), (sizeof(double)*lsvs_d_miss[i].dm)))) {
-	                raise(SIGINT);
-	            } else {
-	                *(lsvs_d_miss[i].dttlb)=dttlb;
-					dttlb=NULL;
-	            }
+					if(!(dttfb=(double *)realloc(*(lsvs_d_miss[i].dttfb), (sizeof(double)*lsvs_d_miss[i].dm)))) {
+						raise(SIGINT);
+					} else {
+						*(lsvs_d_miss[i].dttfb)=dttfb;
+						dttfb=NULL;
+					}
+					if(!(dttlb=(double *)realloc(*(lsvs_d_miss[i].dttlb), (sizeof(double)*lsvs_d_miss[i].dm)))) {
+						raise(SIGINT);
+					} else {
+						*(lsvs_d_miss[i].dttlb)=dttlb;
+						dttlb=NULL;
+					}
+				}
+			} else {
+				showtime=1;
 			}
 			break;
 	}
@@ -416,11 +426,11 @@ static int
 lsvs_qsort_cmp (const void * a, const void * b)
 {
 	if (*(const double*)a > *(const double*)b) {
-		return -1;
+		return(-1);
 	} else if (*(const double*)a < *(const double*)b) {
-		return 1;
+		return(1);
 	} else {
-		return 0;
+		return(0);
 	}
 }
 
@@ -445,7 +455,7 @@ lsvs_compute()
 
 			if (jm > 0) {
 				for (j = 0; j < jm; j++) {
-                	wttfb= wttfb + *(*(lsvs_d_miss[i].dttfb)+j);
+					wttfb= wttfb + *(*(lsvs_d_miss[i].dttfb)+j);
 					wttlb= wttlb + *(*(lsvs_d_miss[i].dttlb)+j);
 				}
 
@@ -470,8 +480,8 @@ lsvs_compute()
 
 			if (jm > 0) {
 				for (j = 0; j < jm; j++) {
-                    wttfb= wttfb + *(*(lsvs_d_hit[i].dttfb)+j);
-                    wttlb= wttlb + *(*(lsvs_d_hit[i].dttlb)+j);
+					wttfb= wttfb + *(*(lsvs_d_hit[i].dttfb)+j);
+					wttlb= wttlb + *(*(lsvs_d_hit[i].dttlb)+j);
 				}
 
 				wttfb=wttfb/jm;
@@ -496,13 +506,13 @@ lsvs_compute()
 static bool
 vsl_status(vsl *ptr)
 {
-	if (ptr->error == true
-		|| ptr->status== 0
-		|| *(ptr->url) == NULL
-		|| ptr->ttfb != ptr->ttfb
-		|| ptr->ttlb != ptr->ttlb
-		|| ptr->req == 0
-		|| ptr->handling == 0) {
+	if ((ptr->error == true)
+		|| (ptr->status== 0)
+		|| (*(ptr->url) == NULL)
+		|| (ptr->ttfb != ptr->ttfb)
+		|| (ptr->ttlb != ptr->ttlb)
+		|| (ptr->req == 0)
+		|| (ptr->handling == 0)) {
 		return(false);
 	} else {
 		return(true);
@@ -564,7 +574,6 @@ collect_init()
 	for (i = 0; i < SOCKETS_MAX; i++) {
 		vsl_init(&(ob[i]));
 	}
-
 }
 
 //analyze collected data
@@ -630,13 +639,13 @@ collect_cleanup()
 
 static int
 collect(void *priv, enum VSL_tag_e tag, unsigned fd, unsigned len,
-	    unsigned spec, const char *ptr, uint64_t bm)
+		unsigned spec, const char *ptr, uint64_t bm)
 {
 	(void)priv;
-    /* SIGINT was raised so we need to exit */
-    if (sigexit > 0) {
-        return (-1);
-    }
+	/* SIGINT was raised so we need to exit */
+	if (sigexit > 0) {
+		return (-1);
+	}
 
 	/* SIGUSR1 was raised so we need to output data */
 	if (showtime > 0) {
@@ -678,32 +687,33 @@ collect(void *priv, enum VSL_tag_e tag, unsigned fd, unsigned len,
 				ob[fd].req = INVALID;
 			}
 
-            if (*(ob[fd].sreq) != NULL) {
-                free(*(ob[fd].sreq));
-                *(ob[fd].sreq)=NULL;
-            }
+			if (*(ob[fd].sreq) != NULL) {
+				free(*(ob[fd].sreq));
+				*(ob[fd].sreq)=NULL;
+			}
 			*(ob[fd].sreq) = strndup(ptr, len);
 			break;
 		case SLT_TxURL:
 		case SLT_RxURL:
-            if (*(ob[fd].url) != NULL) {
-                free(*(ob[fd].url));
-                *(ob[fd].url)=NULL;
-            }
+			if (*(ob[fd].url) != NULL) {
+				free(*(ob[fd].url));
+				*(ob[fd].url)=NULL;
+			}
 			*(ob[fd].url) = strndup(ptr, len);
 			break;
 		case SLT_RxStatus:
 		case SLT_TxStatus:
 			ob[fd].status = 0;
-			if (sscanf(ptr, "%i", &(ob[fd].status)) != 1) {
+
+			if (*(ob[fd].sstatus) != NULL) {
+				free(*(ob[fd].sstatus));
+				*(ob[fd].sstatus)=NULL;
+			}
+			*(ob[fd].sstatus) = strndup(ptr, len);
+
+			if (sscanf(*(ob[fd].sstatus), "%i", &(ob[fd].status)) != 1) {
 				ob[fd].status = 0;
 				ob[fd].error=true;
-			} else {
-                if (*(ob[fd].sstatus) != NULL) {
-                    free(*(ob[fd].sstatus));
-                    *(ob[fd].sstatus)=NULL;
-                }
-				*(ob[fd].sstatus) = strndup(ptr, len);
 			}
 			break;
 		case SLT_ReqEnd:
@@ -712,6 +722,9 @@ collect(void *priv, enum VSL_tag_e tag, unsigned fd, unsigned len,
 				ob[fd].ttlb = 0.0;
 				ob[fd].error=true;
 				errno=0;
+			}
+			if ((ob[fd].ttfb != ob[fd].ttfb) || (ob[fd].ttlb != ob[fd].ttlb)) {
+				ob[fd].error=true;
 			}
 		case SLT_BackendClose:
 		case SLT_BackendReuse:
@@ -798,18 +811,21 @@ main(int argc, char * const *argv)
 	if (f_arg) {
 		config_read(f_arg);
 	} else {
+		fprintf(stderr, "Error: Config file is not specified!\n");
 		perror(f_arg);
 		exit(1);
 	}
 
 	/* specify pidfile */
 	if (P_arg && (pfh = VPF_Open(P_arg, 0644, NULL)) == NULL) {
+		fprintf(stderr, "Error: Couldn't create PID file!\n");
 		perror(P_arg);
 		exit(1);
 	}
 
 	/* run as daemon? */
 	if (D_flag && varnish_daemon(0, 0) == -1) {
+		fprintf(stderr, "Error: Daemonization doesn't work!\n");
 		perror("daemon()");
 		if (pfh != NULL)
 			VPF_Remove(pfh);
@@ -829,7 +845,7 @@ main(int argc, char * const *argv)
 
 	/* run */
 	showtime=0;
-    sigexit=0;
+	sigexit=0;
 	while (!sigexit) {
 		i = VSL_Dispatch(vd, collect, NULL);
 		if (i == 0) {
@@ -852,19 +868,20 @@ main(int argc, char * const *argv)
 static void
 sigterm(int signal)
 {
-    sigexit=signal;
+	fprintf(stderr, "\nSIGINT !\n\n");
+	sigexit=signal;
 }
 
 static void
 cleanup(int signal)
 {
-    fprintf(stderr, "\nStopped by %i!\n\n", signal);
-    lsvs_compute();
+	fprintf(stderr, "\nStopped by %i!\n\n", signal);
+	lsvs_compute();
 	lsvs_cleanup();
 	collect_cleanup();
 	config_cleanup();
-    VSM_Delete(vd);
-    exit(0);
+	VSM_Delete(vd);
+	exit(0);
 }
 
 static void
