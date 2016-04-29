@@ -293,7 +293,7 @@ http_splitheader(struct http *hp, int req)
 	hh[n++] = p;
 	while (!vct_islws(*p))
 		p++;
-	if (vct_iscrlf(*p)) {
+	if (vct_iscrlf(p)) {
 		hh[n++] = NULL;
 		q = p;
 		p += vct_skipcrlf(p);
@@ -412,7 +412,7 @@ http_rxchunk(struct http *hp)
 		vtc_log(hp->vl, hp->fatal,
 		    "Wrong chunk tail[0] = %02x",
 		    hp->rxbuf[l] & 0xff);
-	if(!vct_iscrlf(hp->rxbuf[l + 1]))
+	if(!vct_iscrlf(&hp->rxbuf[l + 1]))
 		vtc_log(&hp->vl, hp->fatal,
 		    "Wrong chunk tail[1] = %02x",
 		    hp->rxbuf[l + 1] & 0xff);
