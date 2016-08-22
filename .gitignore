@@ -87,3 +87,6 @@ TAGS
 
 # NetBeans insists on this
 /nbproject/private/
+
+# build script
+build.sh

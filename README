@@ -1,8 +1,8 @@
 This is Varnish Cache, the high-performance HTTP accelerator.
 
-This fork is even more powerful. If you are using Varnish as
-intensively as we do, you definately should try this. It uses more
-than five time less CPU in our peaks than stock Varnish.
+This fork of even more powerful version from bbcelly contains new utility
+lsvstats. lsvstats is fast varnish log analyzer to measure performance
+of varnish on various objectes defined by regular expression in config.
 
 Documentation and additional information about Varnish is available on
 http://www.varnish-cache.org/
