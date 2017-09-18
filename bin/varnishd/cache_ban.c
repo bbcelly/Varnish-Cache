@@ -782,15 +782,15 @@ BANLIST_ClearAllGoneBans_partB(void)
 	VTAILQ_FOREACH_REVERSE(b, &ban_head, banhead_s, list) {
 		if (b == VTAILQ_LAST(&ban_head, banhead_s))
 			continue;
-		Lck_Lock(&ban_mtx);
-		Lck_AssertHeld(&ban_mtx);
 		if (b->flags & BAN_F_GONE) {
+			Lck_Lock(&ban_mtx);
+			Lck_AssertHeld(&ban_mtx);
 			b0 = BANLIST_BanRemove(b);
+			Lck_Unlock(&ban_mtx);
 		}
 		else {
 			b0 = NULL;
 		}
-		Lck_Unlock(&ban_mtx);
 		if (b0 != NULL) {
 			if (list_start == NULL) {
 				ALLOC_OBJ(list_start, BAN_TO_FREE_LIST_ITEM_MAGIC);
