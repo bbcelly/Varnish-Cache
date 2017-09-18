@@ -663,9 +663,9 @@ collect_analyze(int fd)
 			if (ob[fd].mobile == non) {
 				break;
 				/* Do it for All keys */
-			} else if (strcmp(*(conf[idx].key),"ios") && (ob[fd].mobile == ios)) {
+			} else if ((strcmp(*(conf[idx].key),"ios") == 0) && (ob[fd].mobile == ios)) {
 				lsvs_add(ob[fd].handling , idx, ob[fd].ttfb, ob[fd].ttlb);
-			} else if (strcmp(*(conf[idx].key),"android") && (ob[fd].mobile == android)) {
+			} else if ((strcmp(*(conf[idx].key),"android") == 0) && (ob[fd].mobile == android)) {
 				lsvs_add(ob[fd].handling , idx, ob[fd].ttfb, ob[fd].ttlb);
 			} else if (strcmp(*(conf[idx].key),"mobiles")) {
 				lsvs_add(ob[fd].handling , idx, ob[fd].ttfb, ob[fd].ttlb);
