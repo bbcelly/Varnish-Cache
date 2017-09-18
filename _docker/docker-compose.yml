@@ -1,0 +1,6 @@
+version: '2'
+services:
+  varnish:
+    build: ./build
+    volumes:
+      - ../:/data/varnish
