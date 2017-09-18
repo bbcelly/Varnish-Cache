@@ -202,7 +202,10 @@ config_read(const char *f_arg)
 						i=CONFT_ALL;
 						*(conf[confs].key) = strip(key, 2);
 					} else if (strncmp(key, "xx_", 3) == 0) {
-						i=CONFT_INV;
+						i=CONFT_HEAD;
+						*(conf[confs].key) = strip(key, 3);
+					} else if (strncmp(key, "xm_", 3) == 0) {
+						i=CONFT_MOB;
 						*(conf[confs].key) = strip(key, 3);
 					} else if (strncmp(key, "error_", 6) == 0) {
 						i=CONFT_ERR;
@@ -502,23 +505,6 @@ lsvs_compute()
 
 /* Collecting & Analyzing ----------------------------------------------------*/
 
-static int
-isheader(const char *str, const char *prefix, const char *end,
-    const char **next)
-{
-	while (str < end && *str && *prefix &&
-	    tolower((int)*str) == tolower((int)*prefix))
-		++str, ++prefix;
-	if (*str && *str != ' ')
-		return (0);
-	if (next) {
-		while (str < end && *str && *str == ' ')
-			++str;
-		*next = str;
-	}
-	return (1);
-}
-
 /*
  * Returns a copy of the entire string with leading and trailing spaces
  * trimmed.
@@ -559,7 +545,8 @@ vsl_status(vsl *ptr)
 		|| (ptr->ttfb != ptr->ttfb)
 		|| (ptr->ttlb != ptr->ttlb)
 		|| (ptr->req == 0)
-		|| (ptr->handling == 0)) {
+		|| (ptr->handling == 0)
+		|| (ptr->mobile == 0)) {
 		return(false);
 	} else {
 		return(true);
@@ -582,6 +569,7 @@ vsl_init(vsl *ptr)
 	ptr->sreq=(char **)malloc(sizeof(char *));
 	*(ptr->sreq)=NULL;
 	ptr->handling=0;
+	ptr->mobile=1;
 }
 
 //clear vsl object
@@ -640,16 +628,7 @@ collect_analyze(int fd)
 					break;
 				}
 			}
-		} else if ((ob[fd].req != GET) && (ob[fd].req != POST) && (ob[fd].req != HEAD)) {
-			/* INVALID part */
-			for (i=1; i < conft[CONFT_INV][0]; i++) {
-				/* All part */
-				idx=conft[CONFT_INV][i];
-				if (regexec(&(conf[idx].reg), *(ob[fd].sreq), 0, NULL, 0) == 0) {
-					lsvs_add(ob[fd].handling , idx, ob[fd].ttfb, ob[fd].ttlb);
-				}
-			}
-		} else {
+		} else if ((ob[fd].req == GET) && (ob[fd].req == POST) && (ob[fd].req == HEAD) {
 			for (i=1; i < conft[CONFT_ALL][0]; i++) {
 				/* All part */
 				idx=conft[CONFT_ALL][i];
@@ -665,6 +644,31 @@ collect_analyze(int fd)
 					lsvs_add(ob[fd].handling , idx, ob[fd].ttfb, ob[fd].ttlb);
 					break;
 				}
+			}
+		}
+
+		/* Bye Headers */
+		for (i=1; i < conft[CONFT_HEAD][0]; i++) {
+			/* Do it for All keys */
+			idx=conft[CONFT_HEAD][i];
+			if (regexec(&(conf[idx].reg), *(ob[fd].sreq), 0, NULL, 0) == 0) {
+				lsvs_add(ob[fd].handling , idx, ob[fd].ttfb, ob[fd].ttlb);
+			}
+		}
+
+		/* Count_mobile */
+		for (i=1; i < conft[CONFT_MOB][0]; i++) {
+			idx=conft[CONFT_MOB][i];
+			/* Is there something to analyze? */
+			if (ob[fd].mobile == non) {
+				break;
+			/* Do it for All keys */
+			} else if (strcmp(*(conf[i].key),'ios') && (ob[fd].mobile == ios)) {
+				lsvs_add(ob[fd].handling , idx, ob[fd].ttfb, ob[fd].ttlb);
+			} else if (strcmp(*(conf[i].key),'android') && (ob[fd].mobile == android)) {
+				lsvs_add(ob[fd].handling , idx, ob[fd].ttfb, ob[fd].ttlb);
+			} else if (strcmp(*(conf[i].key),'mobiles')) {
+				lsvs_add(ob[fd].handling , idx, ob[fd].ttfb, ob[fd].ttlb);
 			}
 		}
 	}
@@ -688,6 +692,10 @@ static int
 collect(void *priv, enum VSL_tag_e tag, unsigned fd, unsigned len,
 		unsigned spec, const char *ptr, uint64_t bm)
 {
+	const char *end, *next, *split;
+	char *key;
+	char *value;
+
 	(void)priv;
 	/* SIGINT was raised so we need to exit */
 	if (sigexit > 0) {
@@ -746,22 +754,20 @@ collect(void *priv, enum VSL_tag_e tag, unsigned fd, unsigned len,
 			split = strchr(ptr, ':');
 			if (split == NULL)
 				break;
-			if (tag == SLT_RxHeader &&
-				isprefix(ptr, "authorization:", end, &next) &&
-				isprefix(next, "basic", end, &next)) {
-				free(lp->df_u);
-				lp->df_u = trimline(next, end);
+
+			AN(split);
+			key = trimline(ptr, split);
+			value = trimline(split+1, end);
+			//if key = X-Platform
+			if (strcmp(tolower(key,"X-Platform")) == 0) {
+				//if value == ios || android
+				if (strcmp(tolower(value,"ios")) == 0) {
+					ob[fd].mobile = ios;
+				} else {
+					ob[fd].mobile = android;
+				}
 			} else {
-				struct hdr *h;
-				h = malloc(sizeof(struct hdr));
-				AN(h);
-				AN(split);
-				h->key = trimline(ptr, split);
-				h->value = trimline(split+1, end);
-				if (tag == SLT_RxHeader)
-					VTAILQ_INSERT_HEAD(&lp->req_headers, h, list);
-				else
-					VTAILQ_INSERT_HEAD(&lp->resp_headers, h, list);
+				ob[fd].mobile = non;
 			}
 			break;
 		case SLT_TxURL:

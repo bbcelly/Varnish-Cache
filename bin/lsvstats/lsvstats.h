@@ -2,8 +2,9 @@
 #define CONFT_ERR	0
 #define	CONFT_ALL	1
 #define CONFT_ONE	2
-#define CONFT_INV   3
-#define CONFTN		4
+#define CONFT_HEAD  3
+#define CONFT_MOB   4
+#define CONFTN		5
 
 typedef enum { false, true } bool;
 typedef struct regexp_s {
@@ -24,6 +25,12 @@ enum vcachestatus {
 	pass
 };
 
+enum mobiletypes {
+	non=1,
+	ios,
+	android
+}
+
 typedef struct vsl_s {
 	bool	error;				//error ocured on cellecting?
 	int		status;				//HTTP status code
@@ -34,6 +41,7 @@ typedef struct vsl_s {
 	enum httpcodes		req;	//HTTP request methode
 	char				**sreq;	//HTTP request methode in string
 	enum vcachestatus	handling;	//Varnish Cache status code
+	enum mobiletypes	mobile;		//Mobile type request
 } vsl;							//Varnish Statistics Log Format
 
 typedef struct vsd_s {
