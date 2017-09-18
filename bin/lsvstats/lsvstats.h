@@ -29,7 +29,7 @@ enum mobiletypes {
 	non=1,
 	ios,
 	android
-}
+};
 
 typedef struct vsl_s {
 	bool	error;				//error ocured on cellecting?

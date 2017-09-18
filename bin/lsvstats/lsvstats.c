@@ -628,7 +628,7 @@ collect_analyze(int fd)
 					break;
 				}
 			}
-		} else if ((ob[fd].req == GET) && (ob[fd].req == POST) && (ob[fd].req == HEAD) {
+		} else if ((ob[fd].req == GET) && (ob[fd].req == POST) && (ob[fd].req == HEAD)) {
 			for (i=1; i < conft[CONFT_ALL][0]; i++) {
 				/* All part */
 				idx=conft[CONFT_ALL][i];
@@ -663,11 +663,11 @@ collect_analyze(int fd)
 			if (ob[fd].mobile == non) {
 				break;
 			/* Do it for All keys */
-			} else if (strcmp(*(conf[i].key),'ios') && (ob[fd].mobile == ios)) {
+			} else if (strcmp(*(conf[i].key),"ios") && (ob[fd].mobile == ios)) {
 				lsvs_add(ob[fd].handling , idx, ob[fd].ttfb, ob[fd].ttlb);
-			} else if (strcmp(*(conf[i].key),'android') && (ob[fd].mobile == android)) {
+			} else if (strcmp(*(conf[i].key),"android") && (ob[fd].mobile == android)) {
 				lsvs_add(ob[fd].handling , idx, ob[fd].ttfb, ob[fd].ttlb);
-			} else if (strcmp(*(conf[i].key),'mobiles')) {
+			} else if (strcmp(*(conf[i].key),"mobiles")) {
 				lsvs_add(ob[fd].handling , idx, ob[fd].ttfb, ob[fd].ttlb);
 			}
 		}
@@ -759,9 +759,9 @@ collect(void *priv, enum VSL_tag_e tag, unsigned fd, unsigned len,
 			key = trimline(ptr, split);
 			value = trimline(split+1, end);
 			//if key = X-Platform
-			if (strcmp(tolower(key,"X-Platform")) == 0) {
+			if (strcmp(tolower(key),"X-Platform") == 0) {
 				//if value == ios || android
-				if (strcmp(tolower(value,"ios")) == 0) {
+				if (strcmp(tolower(value),"ios") == 0) {
 					ob[fd].mobile = ios;
 				} else {
 					ob[fd].mobile = android;
