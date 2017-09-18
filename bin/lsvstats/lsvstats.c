@@ -502,6 +502,53 @@ lsvs_compute()
 
 /* Collecting & Analyzing ----------------------------------------------------*/
 
+static int
+isheader(const char *str, const char *prefix, const char *end,
+    const char **next)
+{
+	while (str < end && *str && *prefix &&
+	    tolower((int)*str) == tolower((int)*prefix))
+		++str, ++prefix;
+	if (*str && *str != ' ')
+		return (0);
+	if (next) {
+		while (str < end && *str && *str == ' ')
+			++str;
+		*next = str;
+	}
+	return (1);
+}
+
+/*
+ * Returns a copy of the entire string with leading and trailing spaces
+ * trimmed.
+ */
+static char *
+trimline(const char *str, const char *end)
+{
+	size_t len;
+	char *p;
+
+	/* skip leading space */
+	while (str < end && *str && *str == ' ')
+		++str;
+
+	/* seek to end of string */
+	for (len = 0; &str[len] < end && str[len]; ++len)
+		 /* nothing */ ;
+
+	/* trim trailing space */
+	while (len && str[len - 1] == ' ')
+		--len;
+
+	/* copy and return */
+	p = malloc(len + 1);
+	assert(p != NULL);
+	memcpy(p, str, len);
+	p[len] = '\0';
+	return (p);
+}
+
 //get status of vsl object
 static bool
 vsl_status(vsl *ptr)
@@ -654,6 +701,8 @@ collect(void *priv, enum VSL_tag_e tag, unsigned fd, unsigned len,
 		showtime=0;
 	}
 
+	end = ptr + len;
+
 	/* Just ignore any fd not inside the bitmap */
 	if (fd >= sizeof bitmap / sizeof bitmap[0])
 		return (0);
@@ -671,9 +720,7 @@ collect(void *priv, enum VSL_tag_e tag, unsigned fd, unsigned len,
 				ob[fd].handling = miss;
 			} else if (strncmp(ptr, "pass", len) == 0) {
 				ob[fd].handling = pass;
-			} else {
-				//do nothing, it's ok here
-			}
+			} //nothing else matters
 			break;
 		case SLT_TxRequest:
 		case SLT_RxRequest:
@@ -693,13 +740,37 @@ collect(void *priv, enum VSL_tag_e tag, unsigned fd, unsigned len,
 			}
 			*(ob[fd].sreq) = strndup(ptr, len);
 			break;
+
+		case SLT_TxHeader:
+		case SLT_RxHeader:
+			split = strchr(ptr, ':');
+			if (split == NULL)
+				break;
+			if (tag == SLT_RxHeader &&
+				isprefix(ptr, "authorization:", end, &next) &&
+				isprefix(next, "basic", end, &next)) {
+				free(lp->df_u);
+				lp->df_u = trimline(next, end);
+			} else {
+				struct hdr *h;
+				h = malloc(sizeof(struct hdr));
+				AN(h);
+				AN(split);
+				h->key = trimline(ptr, split);
+				h->value = trimline(split+1, end);
+				if (tag == SLT_RxHeader)
+					VTAILQ_INSERT_HEAD(&lp->req_headers, h, list);
+				else
+					VTAILQ_INSERT_HEAD(&lp->resp_headers, h, list);
+			}
+			break;
 		case SLT_TxURL:
 		case SLT_RxURL:
 			if (*(ob[fd].url) != NULL) {
 				free(*(ob[fd].url));
 				*(ob[fd].url)=NULL;
 			}
-			*(ob[fd].url) = strndup(ptr, len);
+			*(ob[fd].url) = trimline(ptr, end);
 			break;
 		case SLT_RxStatus:
 		case SLT_TxStatus:
@@ -709,7 +780,7 @@ collect(void *priv, enum VSL_tag_e tag, unsigned fd, unsigned len,
 				free(*(ob[fd].sstatus));
 				*(ob[fd].sstatus)=NULL;
 			}
-			*(ob[fd].sstatus) = strndup(ptr, len);
+			*(ob[fd].sstatus) = trimline(ptr, len);
 
 			if (sscanf(*(ob[fd].sstatus), "%i", &(ob[fd].status)) != 1) {
 				ob[fd].status = 0;
