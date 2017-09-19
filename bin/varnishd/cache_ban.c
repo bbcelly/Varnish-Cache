@@ -821,6 +821,8 @@ BANLIST_ClearAllGoneBans_partB(void)
 void
 BANLIST_ClearAllGoneBans(void)
 {
+    VSC_C_main->n_ban_lurk_clear_all++;
+
 	struct ban *b;
 
 	do {
