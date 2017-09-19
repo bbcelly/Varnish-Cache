@@ -32,6 +32,9 @@ RUN apt-get update \
         libpcre3-dev \
         pkg-config \
         libjemalloc-dev \
+        curl \
+        procps \
+        telnet \
     && apt-get autoclean --yes \
     && apt-get autoremove --yes \
     && apt-get clean \
@@ -40,10 +43,11 @@ RUN apt-get update \
 WORKDIR /data/varnish
 
 # Prepare build script
-#RUN echo 'sh autogen.sh && sh configure && make && make check' > /usr/local/sbin/build.sh
-RUN echo 'sh autogen.sh && sh configure && make' > /usr/local/sbin/build.sh
+RUN echo 'sh autogen.sh && sh configure && make && make install && echo '"'"'backend default { .host = "127.0.0.1"; .port = "9999"; }\n\nsub vcl_recv { if(req.url ~ "^/data$") { error 750; } set req.url = "/data"; return(lookup); }\n\nsub vcl_error { synthetic {"OKK-Celly"};return (deliver); }\n\nsub vcl_fetch{ set beresp.ttl=10s; set req.http.X-test="test"; }'"'"'>/usr/local/etc/varnish/default.vcl && ldconfig && varnishd -f /usr/local/etc/varnish/default.vcl -s malloc,1G -T 127.0.0.1:9998 -a 0.0.0.0:9999 -i varnish1 && sh' > /usr/local/sbin/build.sh
 RUN chmod a+x /usr/local/sbin/build.sh
 
 ENTRYPOINT ["/bin/sh"]
+
+EXPOSE 9998-9999
 
 CMD ["/usr/local/sbin/build.sh"]
