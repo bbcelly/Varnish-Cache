@@ -759,9 +759,15 @@ collect(void *priv, enum VSL_tag_e tag, unsigned fd, unsigned len,
             key = trimline(ptr, split);
             value = trimline(split+1, end);
             //if key = X-Platform
-            if (strcmp(tolower(key),"X-Platform") == 0) {
+            for (int i = 0; i < strlen(key); i++) {
+                key[i] = tolower(key[i]);
+            }
+            if (strcmp(key,"x-platform") == 0) {
                 //if value == ios || android
-                if (strcmp(tolower(value),"ios") == 0) {
+                for (int i = 0; i < strlen(value); i++) {
+                    value[i] = tolower(value[i]);
+                }
+                if (strcmp(value,"ios") == 0) {
                     ob[fd].mobile = ios;
                 } else {
                     ob[fd].mobile = android;
