@@ -1,0 +1,8 @@
+version: '3'
+services:
+  varnish:
+    build: ./build
+    volumes:
+      - ../:/data/varnish
+    ports:
+      - "9998-9999:9998-9999"

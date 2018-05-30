@@ -57,6 +57,12 @@
 #include "cache.h"
 #include "hash_slinger.h"
 
+struct timeval t1;
+double getMicroTime() {
+    gettimeofday(&t1, NULL);
+    return t1.tv_sec * 1000.0 + t1.tv_usec / 1000.0;
+}
+
 struct ban {
 	unsigned		magic;
 #define BAN_MAGIC		0x700b08ea
@@ -782,15 +788,15 @@ BANLIST_ClearAllGoneBans_partB(void)
 	VTAILQ_FOREACH_REVERSE(b, &ban_head, banhead_s, list) {
 		if (b == VTAILQ_LAST(&ban_head, banhead_s))
 			continue;
-		Lck_Lock(&ban_mtx);
-		Lck_AssertHeld(&ban_mtx);
 		if (b->flags & BAN_F_GONE) {
+			Lck_Lock(&ban_mtx);
+			Lck_AssertHeld(&ban_mtx);
 			b0 = BANLIST_BanRemove(b);
+			Lck_Unlock(&ban_mtx);
 		}
 		else {
 			b0 = NULL;
 		}
-		Lck_Unlock(&ban_mtx);
 		if (b0 != NULL) {
 			if (list_start == NULL) {
 				ALLOC_OBJ(list_start, BAN_TO_FREE_LIST_ITEM_MAGIC);
@@ -821,6 +827,11 @@ BANLIST_ClearAllGoneBans_partB(void)
 void
 BANLIST_ClearAllGoneBans(void)
 {
+    VSC_C_main->n_ban_lurk_clear_all++;
+    double start, startB, end;
+
+    start = getMicroTime();
+
 	struct ban *b;
 
 	do {
@@ -831,7 +842,13 @@ BANLIST_ClearAllGoneBans(void)
 			BAN_Free(b);
 	} while (b != NULL);
 
+    startB = getMicroTime();
 	BANLIST_ClearAllGoneBans_partB();
+    end = getMicroTime();
+    end -= 5000; // TIM_sleep(5.0); in BANLIST_ClearAllGoneBans_partB
+
+    VSC_C_main->n_blt_clear_all += (int) (end - start);
+    VSC_C_main->n_blt_clear_all_B += (int) (end - startB);
 }
 
 /*--------------------------------------------------------------------
@@ -846,12 +863,10 @@ ban_lurker_work(const struct sess *sp, unsigned pass)
 	struct objcore *oc, *oc2;
 	struct object *o;
 	int i, j, lurk_done;
+    double start_inside_end_remove;
 
 	AN(pass & BAN_F_LURK);
 	AZ(pass & ~BAN_F_LURK);
-
-	/* First try to remove all gone bans */
-	BANLIST_ClearAllGoneBans();
 
 	/* First route the last ban(s) - this may not be necessary because of BANLIST_ClearAllGoneBans */
 /*	do {
@@ -910,6 +925,7 @@ ban_lurker_work(const struct sess *sp, unsigned pass)
 			/* Try to remove some bans from banlist in lurker work */
 			if(j > 500)
 			{
+                start_inside_end_remove = getMicroTime();
 				j = 0;
 				do {
 					b2 = ban_CheckLast();
@@ -927,6 +943,7 @@ ban_lurker_work(const struct sess *sp, unsigned pass)
 						Lck_Lock(&ban_mtx);
 					}
 				} while (b2 != NULL);
+                VSC_C_main->n_blt_ban_lurker_wr1 += (int) (getMicroTime() - start_inside_end_remove);
 			}
 			oc = VTAILQ_FIRST(&b->objcore);
 			if (oc == NULL)
@@ -1025,6 +1042,8 @@ ban_lurker(struct sess *sp, void *priv)
 	struct ban *bf;
 	unsigned pass = (1 << LURK_SHIFT);
 
+    double start;
+
 	int i = 0;
 	(void)priv;
 	while (1) {
@@ -1043,7 +1062,12 @@ ban_lurker(struct sess *sp, void *priv)
 				TIM_sleep(1.0);
 		}
 
+        /* First try to remove all gone bans */
+        BANLIST_ClearAllGoneBans();
+
+        start = getMicroTime();
 		i = ban_lurker_work(sp, pass);
+        VSC_C_main->n_blt_ban_lurker_wrk += (int) (getMicroTime() - start);
 		WSL_Flush(sp->wrk, 0);
 		WRK_SumStat(sp->wrk);
 		if (i) {
