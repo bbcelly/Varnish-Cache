@@ -692,9 +692,10 @@ static int
 collect(void *priv, enum VSL_tag_e tag, unsigned fd, unsigned len,
         unsigned spec, const char *ptr, uint64_t bm)
 {
-    const char *end, *split;
-    char *key;
-    char *value;
+    const char *end;
+    char *split;
+    char *key=NULL;
+    char *value=NULL;
 
     (void)priv;
     /* SIGINT was raised so we need to exit */
@@ -814,12 +815,18 @@ collect(void *priv, enum VSL_tag_e tag, unsigned fd, unsigned len,
         default:
             break;
     }
-    free(key);
-    key=NULL;
-    free(value);
-    value=NULL;
-    free(split);
-    split=NULL;
+    if (key != NULL) {
+        free(key);
+        key=NULL;
+    }
+    if (value != NULL) {
+        free(value);
+        value=NULL;
+    }
+    if (split != NULL) {
+        free(split);
+        split=NULL;
+    }
 
     return (0);
 }
