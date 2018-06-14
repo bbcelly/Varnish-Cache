@@ -692,8 +692,7 @@ static int
 collect(void *priv, enum VSL_tag_e tag, unsigned fd, unsigned len,
         unsigned spec, const char *ptr, uint64_t bm)
 {
-    const char *end;
-    char *split;
+    const char *end, *split;
     char *key=NULL;
     char *value=NULL;
 
@@ -822,10 +821,6 @@ collect(void *priv, enum VSL_tag_e tag, unsigned fd, unsigned len,
     if (value != NULL) {
         free(value);
         value=NULL;
-    }
-    if (split != NULL) {
-        free(split);
-        split=NULL;
     }
 
     return (0);
