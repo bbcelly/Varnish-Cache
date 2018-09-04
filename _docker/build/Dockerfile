@@ -1,4 +1,4 @@
-FROM stackbrew/debian:wheezy
+FROM debian:stretch
 MAINTAINER Pavel Cvetler <pavel.cvetler@livesport.eu>
 
 # Basic environtment
@@ -23,7 +23,7 @@ RUN apt-get update \
         python \
         python-docutils \
         autotools-dev \
-        automake1.9 \
+        automake1.11 \
         libtool \
         autoconf \
         libncurses-dev \
@@ -43,11 +43,14 @@ RUN apt-get update \
 WORKDIR /data/varnish
 
 # Prepare build script
-RUN echo 'sh autogen.sh && sh configure && make && make install && echo '"'"'backend default { .host = "127.0.0.1"; .port = "9999"; }\n\nsub vcl_recv { if(req.url ~ "^/data$") { error 750; } set req.url = "/data"; return(lookup); }\n\nsub vcl_error { synthetic {"OKK-Celly"};return (deliver); }\n\nsub vcl_fetch{ set beresp.ttl=10s; set req.http.X-test="test"; }'"'"'>/usr/local/etc/varnish/default.vcl && ldconfig && varnishd -f /usr/local/etc/varnish/default.vcl -s malloc,1G -T 127.0.0.1:9998 -a 0.0.0.0:9999 -i varnish1 && sh' > /usr/local/sbin/build.sh
+RUN echo 'sh autogen.sh && sh configure --prefix=/usr --localstatedir=/var/lib && make -j4' > /usr/local/sbin/build.sh
 RUN chmod a+x /usr/local/sbin/build.sh
 
-ENTRYPOINT ["/bin/sh"]
+RUN echo 'mkdir -p /usr/local/etc/varnish/ && make install && ldconfig && echo '"'"'backend default { .host = "127.0.0.1"; .port = "9999"; }\n\nsub vcl_recv { if(req.url ~ "^/data$") { error 750; } set req.url = "/data"; return(lookup); }\n\nsub vcl_error { synthetic {"OKK-Celly"};return (deliver); }\n\nsub vcl_fetch{ set beresp.ttl=10s; set req.http.X-test="test"; }'"'"'>/usr/local/etc/varnish/default.vcl && varnishd -f /usr/local/etc/varnish/default.vcl -s malloc,1G -T 127.0.0.1:9998 -a 0.0.0.0:9999 -i varnish1' > /usr/local/sbin/install_and_run.sh
+RUN chmod a+x /usr/local/sbin/install_and_run.sh
+
+#ENTRYPOINT ["/bin/sh"]
 
 EXPOSE 9998-9999
 
-CMD ["/usr/local/sbin/build.sh"]
+CMD /usr/local/sbin/build.sh && /usr/local/sbin/install_and_run.sh && bash
