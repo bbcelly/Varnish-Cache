@@ -1,0 +1,53 @@
+---
+sudo: required
+language: c
+matrix:
+  include:
+  - os: linux
+    dist: trusty
+    compiler: gcc
+  - os: linux
+    dist: trusty
+    compiler: clang
+  - os: linux
+    dist: trusty
+    compiler: clang
+    env: CLANG=6.0 SAN_FLAGS="--enable-asan --enable-ubsan"
+  - os: osx
+    osx_image: xcode9.2
+    compiler: clang
+  allow_failures:
+  - os: osx
+  - env: CLANG=6.0 SAN_FLAGS="--enable-asan --enable-ubsan"
+addons:
+  apt:
+    packages:
+      - python-docutils
+before_install:
+  - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then
+      brew update;
+      brew install docutils nghttp2;
+    fi
+  - if [[ -n "$CLANG" ]]; then
+      wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key |
+        sudo apt-key add -;
+      sudo apt-add-repository -y
+        "deb http://apt.llvm.org/trusty/ llvm-toolchain-trusty-$CLANG main";
+      sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-keys BA9EF27F;
+      sudo apt-add-repository -y
+        "deb http://ppa.launchpad.net/ubuntu-toolchain-r/test/ubuntu trusty main";
+      sudo apt-get update;
+      sudo apt-get install -y clang-$CLANG llvm-$CLANG;
+      export CC=clang-$CLANG;
+      export CONFIGURE_ARGS="--enable-developer-warnings --enable-debugging-symbols --disable-stack-protector ${SAN_FLAGS}";
+      export ASAN_OPTIONS=abort_on_error=1,detect_odr_violation=1,detect_leaks=1,detect_stack_use_after_return=1,detect_invalid_pointer_pairs=1,handle_segv=0,handle_sigbus=0,use_sigaltstack=0;
+      export LSAN_OPTIONS=abort_on_error=1,use_sigaltstack=0,suppressions=$(pwd)/tools/lsan.suppr;
+      export TSAN_OPTIONS=abort_on_error=1,halt_on_error=1,use_sigaltstack=0,suppressions=$(pwd)/tools/tsan.suppr;
+      export UBSAN_OPTIONS=halt_on_error=1,print_stacktrace=1,use_sigaltstack=0,suppressions=$(pwd)/tools/ubsan.suppr;
+    fi
+  - ./autogen.sh
+  - ./configure ${CONFIGURE_ARGS}
+script:
+  - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then
+      export PYTHONPATH=`brew --prefix`/lib/python2.7/site-packages; fi
+  - make -j3 check VERBOSE=1
