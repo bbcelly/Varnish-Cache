@@ -98,7 +98,9 @@ delay 1
 varnish v1 -cliok "param.set ban_lurker_sleep .00"
 varnish v1 -cliok "ban.list"
 varnish v1 -expect n_ban == 7
-varnish v1 -expect n_ban_gone == 4
+# optimalized lurker
+#varnish v1 -expect n_ban_gone == 4
+varnish v1 -expect n_ban_gone == 2
 
 client c1 {
 	txreq -url "/alpha"
@@ -108,7 +110,8 @@ client c1 {
 
 delay 1
 varnish v1 -cliok "ban.list"
-varnish v1 -expect n_ban == 4
+#varnish v1 -expect n_ban == 4
+varnish v1 -expect n_ban == 7
 
 client c1 {
 	txreq -url "/beta"
