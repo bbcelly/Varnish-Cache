@@ -19,9 +19,8 @@ client c1 {
 	txreq -url /foobar -hdr "Accept-Encoding: gzip"
 	rxresp
 	expect resp.http.content-encoding == "gzip"
-#	gunzip
-#	expect resp.bodylen == 43
-#	expect resp.bodylen == 32
+	gunzip
+	expect resp.bodylen == 43
 
 	txreq -url /foobar 
 	rxresp
