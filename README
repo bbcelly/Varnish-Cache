@@ -13,4 +13,4 @@ to <varnish-misc@varnish-cache.org>.
 Questions about commercial support and services related to Varnish
 should be addressed to <sales@varnish-software.com>.
 
-Rewritten test c00049.vtc some disabled
+Rewritten test c00049.vtc, r01030.vtc some disabled
