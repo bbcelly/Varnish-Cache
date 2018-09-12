@@ -50,4 +50,4 @@ before_install:
 script:
   - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then
       export PYTHONPATH=`brew --prefix`/lib/python2.7/site-packages; fi
-  - make -j3 check VERBOSE=1
+  - make check VERBOSE=1
