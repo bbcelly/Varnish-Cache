@@ -1090,7 +1090,13 @@ static void * __match_proto__(bgthread_t)
 ban_cleaner(struct sess *sp, void *priv)
 {
     while (1) {
-        TIM_sleep(1.0);
+        if (params->ban_cleaner_sleep == 0.0) {
+            TIM_sleep(1.0);
+        }
+        else {
+            BANLIST_ClearAllGoneBans();
+            TIM_sleep(params->ban_cleaner_sleep);
+        }
     }
     NEEDLESS_RETURN(NULL);
 }
