@@ -91,8 +91,10 @@ static VTAILQ_HEAD(banhead_s,ban) ban_head = VTAILQ_HEAD_INITIALIZER(ban_head);
 static struct lock ban_mtx;
 static struct ban *ban_magic;
 static pthread_t ban_thread;
+static pthread_t ban_cl_thread;
 static struct ban * volatile ban_start;
 static bgthread_t ban_lurker;
+static bgthread_t ban_cleaner;
 
 /*--------------------------------------------------------------------
  * BAN string magic markers
@@ -575,6 +577,7 @@ BAN_Compile(void)
 	SMP_NewBan(ban_magic->spec, ban_len(ban_magic->spec));
 	ban_start = VTAILQ_FIRST(&ban_head);
 	WRK_BgThread(&ban_thread, "ban-lurker", ban_lurker, NULL);
+	WRK_BgThread(&ban_cl_thread, "ban-cleaner", ban_cleaner, NULL);
 }
 
 /*--------------------------------------------------------------------
@@ -1081,6 +1084,15 @@ ban_lurker(struct sess *sp, void *priv)
 		}
 	}
 	NEEDLESS_RETURN(NULL);
+}
+
+static void * __match_proto__(bgthread_t)
+ban_cleaner(struct sess *sp, void *priv)
+{
+    while (1) {
+        TIM_sleep(1.0);
+    }
+    NEEDLESS_RETURN(NULL);
 }
 
 /*--------------------------------------------------------------------
