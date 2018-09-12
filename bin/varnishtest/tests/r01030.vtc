@@ -43,8 +43,7 @@ delay 0.1
 varnish v1 -expect n_ban_obj_test == 0
 
 delay 1.0
-#varnish v1 -expect n_ban_obj_test == 1
-varnish v1 -expect n_ban_obj_test == 0
+varnish v1 -expect n_ban_obj_test == 1
 
 varnish v1 -cliok "param.set ban_lurker_sleep 5.01"
 
@@ -62,5 +61,4 @@ delay 0.1
 varnish v1 -expect n_ban_obj_test == 1
 
 delay 1.1
-#varnish v1 -expect n_ban_obj_test == 2
-varnish v1 -expect n_ban_obj_test == 1
+varnish v1 -expect n_ban_obj_test == 2

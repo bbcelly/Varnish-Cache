@@ -865,20 +865,19 @@ ban_lurker_work(const struct sess *sp, unsigned pass)
 	struct objhead *oh;
 	struct objcore *oc, *oc2;
 	struct object *o;
-	int i, j, lurk_done;
-    double start_inside_end_remove;
+	int i;
 
 	AN(pass & BAN_F_LURK);
 	AZ(pass & ~BAN_F_LURK);
 
 	/* First route the last ban(s) - this may not be necessary because of BANLIST_ClearAllGoneBans */
-/*	do {
+	do {
 		Lck_Lock(&ban_mtx);
 		b2 = ban_CheckLast();
 		Lck_Unlock(&ban_mtx);
 		if (b2 != NULL)
 			BAN_Free(b2);
-	} while (b2 != NULL);*/
+	} while (b2 != NULL);
 
 	/*
 	 * Find out if we have any bans we can do something about
@@ -904,50 +903,12 @@ ban_lurker_work(const struct sess *sp, unsigned pass)
 	if (i == 0)
 		return (0);
 
-	j = 0;
-	lurk_done = 0;
 	VTAILQ_FOREACH_REVERSE(b, &ban_head, banhead_s, list) {
 		if (params->diag_bitmap & 0x80000)
 			VSL(SLT_Debug, 0, "lurker doing %f %d",
 			    ban_time(b->spec), b->refcount);
 		while (1) {
-			j++;
-			/* 
-			 * Check, that there is some ban on the end of
-			 * banlist, that can't be remowed without
-			 * going through lurker work. If so, restart
-			 * lurker work to process it.
-			 */
-			if (VSC_C_main->n_ban > 50000
-				&& VSC_C_main->n_ban_gone > 25000)
-			{
-				VSC_C_main->n_ban_lurk_aborts++;
-				return (1);
-			}
 			Lck_Lock(&ban_mtx);
-			/* Try to remove some bans from banlist in lurker work */
-			if(j > 500)
-			{
-                start_inside_end_remove = getMicroTime();
-				j = 0;
-				do {
-					b2 = ban_CheckLast();
-					if (b2 != NULL)
-					{
-						VSC_C_main->n_ban_retire_lurk++;
-						Lck_Unlock(&ban_mtx);
-						if (b2 == b0)
-							lurk_done = 1;
-						if (b2 == b && lurk_done == 0)
-							(b) = VTAILQ_PREV((b), banhead_s, list);
-						BAN_Free(b2);
-						if (lurk_done == 1)
-							return (1);
-						Lck_Lock(&ban_mtx);
-					}
-				} while (b2 != NULL);
-                VSC_C_main->n_blt_ban_lurker_wr1 += (int) (getMicroTime() - start_inside_end_remove);
-			}
 			oc = VTAILQ_FIRST(&b->objcore);
 			if (oc == NULL)
 				break;
@@ -1064,9 +1025,6 @@ ban_lurker(struct sess *sp, void *priv)
 			else
 				TIM_sleep(1.0);
 		}
-
-        /* First try to remove all gone bans */
-        BANLIST_ClearAllGoneBans();
 
         start = getMicroTime();
 		i = ban_lurker_work(sp, pass);
