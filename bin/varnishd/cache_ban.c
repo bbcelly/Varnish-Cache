@@ -870,7 +870,7 @@ ban_lurker_work(const struct sess *sp, unsigned pass)
 	AN(pass & BAN_F_LURK);
 	AZ(pass & ~BAN_F_LURK);
 
-	/* First route the last ban(s) - this may not be necessary because of BANLIST_ClearAllGoneBans */
+	/* First route the last ban(s) */
 	do {
 		Lck_Lock(&ban_mtx);
 		b2 = ban_CheckLast();
