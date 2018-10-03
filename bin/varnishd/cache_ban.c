@@ -788,14 +788,21 @@ BANLIST_ClearAllGoneBans_partB(void)
 
 	b0 = NULL;
 	list_start = NULL;
+	Lck_Lock(&ban_mtx);
+	Lck_AssertHeld(&ban_mtx);
+	double start = getMicroTime();
 	VTAILQ_FOREACH_REVERSE(b, &ban_head, banhead_s, list) {
+		if (getMicroTime() - start > (10 * params->ban_cleaner_lock_held)) {
+			Lck_Unlock(&ban_mtx);
+			Lck_Lock(&ban_mtx);
+			Lck_AssertHeld(&ban_mtx);
+			VSC_C_main->n_cleaner_lock_timeout++;
+			start = getMicroTime();
+		}
 		if (b == VTAILQ_LAST(&ban_head, banhead_s))
 			continue;
 		if (b->flags & BAN_F_GONE) {
-			Lck_Lock(&ban_mtx);
-			Lck_AssertHeld(&ban_mtx);
 			b0 = BANLIST_BanRemove(b);
-			Lck_Unlock(&ban_mtx);
 		}
 		else {
 			b0 = NULL;
@@ -816,6 +823,7 @@ BANLIST_ClearAllGoneBans_partB(void)
 			b0 = NULL;
 		}
 	}
+	Lck_Unlock(&ban_mtx);
 	TIM_sleep(5.0);
 	list_item = list_start;
 	while (list_start != NULL) {
@@ -835,15 +843,15 @@ BANLIST_ClearAllGoneBans(void)
 
     start = getMicroTime();
 
-	struct ban *b;
-
-	do {
-		Lck_Lock(&ban_mtx);
-		b = ban_CheckLast();
-		Lck_Unlock(&ban_mtx);
-		if (b != NULL)
-			BAN_Free(b);
-	} while (b != NULL);
+//	struct ban *b;
+//
+//	do {
+//		Lck_Lock(&ban_mtx);
+//		b = ban_CheckLast();
+//		Lck_Unlock(&ban_mtx);
+//		if (b != NULL)
+//			BAN_Free(b);
+//	} while (b != NULL);
 
     startB = getMicroTime();
 	BANLIST_ClearAllGoneBans_partB();

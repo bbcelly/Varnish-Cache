@@ -198,6 +198,9 @@ struct params {
 	/* How long time does the ban cleaner sleep */
 	double			ban_cleaner_sleep;
 
+	/* How long (in ms) can ban cleaner held lock before releasing it */
+	double			ban_cleaner_lock_held;
+
 	/* Max size of the saintmode list. 0 == no saint mode. */
 	unsigned		saintmode_threshold;
 

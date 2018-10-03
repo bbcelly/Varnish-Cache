@@ -153,6 +153,8 @@ VSC_F(n_ban_retire_lurk,		uint64_t, 0, 'a', "N old bans deleted in lurker work",
 VSC_F(n_ban_lurk_aborts,		uint64_t, 0, 'a', "N aborts of ban_lurker_work", "")
 VSC_F(n_ban_lurk_clear_all,		uint64_t, 0, 'i', "N clear all bans lurker runs", "")
 
+VSC_F(n_cleaner_lock_timeout,   uint64_t, 0, 'i', "N locks released in cleaner thread due to timeout", "")
+
 VSC_F(n_blt_clear_all,	       	uint64_t, 0, 'a', "Total time [ms] spent in BANLIST_ClearAllGoneBans", "")
 VSC_F(n_blt_clear_all_B,		uint64_t, 0, 'a', "Total time [ms] spent in BANLIST_ClearAllGoneBans_partB", "")
 VSC_F(n_blt_ban_lurker_wrk,	    uint64_t, 0, 'a', "Total time [ms] spent in ban_lurker_work", "")

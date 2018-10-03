@@ -868,6 +868,12 @@ static const struct parspec input_parspec[] = {
 		"A value of zero disables the ban cleaner.",
 		0,
 		"0", "s" },
+    { "ban_cleaner_lock_held", tweak_timeout_double,
+        &master.ban_cleaner_lock_held, 1, UINT_MAX,
+        "How long can ban cleaner held lock before releasing it "
+        "and requesting it again.\n",
+        0,
+        "1", "ms" },
 	{ "saintmode_threshold", tweak_uint,
 		&master.saintmode_threshold, 0, UINT_MAX,
 		"The maximum number of objects held off by saint mode before "
