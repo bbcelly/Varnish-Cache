@@ -192,6 +192,9 @@ struct params {
 	/* Get rid of duplicate bans */
 	unsigned		ban_dups;
 
+	/* Get rid of duplicate bans */
+	unsigned		ban_dups_cleaner;
+
 	/* How long time does the ban lurker sleep */
 	double			ban_lurker_sleep;
 

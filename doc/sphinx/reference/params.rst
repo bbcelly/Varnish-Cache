@@ -33,12 +33,31 @@ ban_dups
 
 	Detect and eliminate duplicate bans.
 
+ban_dups_cleaner
+	- Units: bool
+	- Default: off
+
+	Detect and eliminate duplicate bans using cleaner.
+
 ban_lurker_sleep
 	- Units: s
 	- Default: 0.01
 
 	How long time does the ban lurker thread sleeps between successful attempts to push the last item up the ban  list.  It always sleeps a second when nothing can be done.
 	A value of zero disables the ban lurker.
+
+ban_cleaner_sleep
+	- Units: s
+	- Default: 0
+
+	How long time does the ban cleaner thread sleeps between cleaning gone bans in the ban list.
+    A value of zero disables the ban cleaner.
+
+ban_cleaner_lock_held
+	- Units: ms
+	- Default: 1
+
+	How long can ban cleaner held lock before releasing it and requesting it again.
 
 between_bytes_timeout
 	- Units: s

@@ -89,12 +89,18 @@ struct ban_test {
 
 static VTAILQ_HEAD(banhead_s,ban) ban_head = VTAILQ_HEAD_INITIALIZER(ban_head);
 static struct lock ban_mtx;
+static struct lock ban_trash_mtx;
 static struct ban *ban_magic;
 static pthread_t ban_thread;
 static pthread_t ban_cl_thread;
+static pthread_t ban_d_thread;
 static struct ban * volatile ban_start;
 static bgthread_t ban_lurker;
 static bgthread_t ban_cleaner;
+static bgthread_t ban_destroyer;
+
+static struct ban *BANLIST_BanRemove(struct ban *b);
+void add_ban_to_trash(struct ban *ban);
 
 /*--------------------------------------------------------------------
  * BAN string magic markers
@@ -367,7 +373,7 @@ BAN_AddTest(struct cli *cli, struct ban *b, const char *a1, const char *a2,
 void
 BAN_Insert(struct ban *b)
 {
-	struct ban  *bi, *be;
+	struct ban  *bi, *be, *b0;
 	unsigned pcount;
 	ssize_t ln;
 	double t0;
@@ -422,6 +428,12 @@ BAN_Insert(struct ban *b)
 			continue;
 		bi->flags |= BAN_F_GONE;
 		VSC_C_main->n_ban_gone++;
+		if (params->ban_dups_cleaner) {
+			b0 = BANLIST_BanRemove(bi);
+			if (b0 != NULL) {
+				add_ban_to_trash(b0);
+			}
+		}
 		pcount++;
 	}
 	be->refcount--;
@@ -578,6 +590,7 @@ BAN_Compile(void)
 	ban_start = VTAILQ_FIRST(&ban_head);
 	WRK_BgThread(&ban_thread, "ban-lurker", ban_lurker, NULL);
 	WRK_BgThread(&ban_cl_thread, "ban-cleaner", ban_cleaner, NULL);
+	WRK_BgThread(&ban_d_thread, "ban-destroyer", ban_destroyer, NULL);
 }
 
 /*--------------------------------------------------------------------
@@ -780,11 +793,53 @@ ban_CheckLast(void)
 	struct ban_to_free_list_item *next_item;
 };
 
+static struct ban_to_free_list_item *list_start, *list_end;
+
+void init_ban_trash()
+{
+	Lck_AssertHeld(&ban_trash_mtx);
+	list_start = NULL;
+	ALLOC_OBJ(list_start, BAN_TO_FREE_LIST_ITEM_MAGIC);
+	list_start->ban = NULL;
+	list_start->next_item = NULL;
+	list_end = list_start;
+}
+
+void add_ban_to_trash(struct ban *ban)
+{
+	Lck_Lock(&ban_trash_mtx);
+	Lck_AssertHeld(&ban_trash_mtx);
+	ALLOC_OBJ(list_end->next_item, BAN_TO_FREE_LIST_ITEM_MAGIC);
+	list_end = list_end->next_item;
+	list_end->ban = ban;
+	list_end->next_item = NULL;
+	Lck_Unlock(&ban_trash_mtx);
+}
+
+void clean_ban_trash()
+{
+	struct ban_to_free_list_item *list_item, *list_trash_start;
+	Lck_Lock(&ban_trash_mtx);
+	Lck_AssertHeld(&ban_trash_mtx);
+	list_trash_start = list_start;
+	init_ban_trash();
+	Lck_Unlock(&ban_trash_mtx);
+	TIM_sleep(5.0);
+	while (list_trash_start != NULL) {
+		list_item = list_trash_start;
+		list_trash_start = list_trash_start->next_item;
+		if (list_item->ban != NULL) {
+			BAN_Free(list_item->ban);
+		}
+		FREE_OBJ(list_item);
+		list_item = NULL;
+	}
+}
+
 void
 BANLIST_ClearAllGoneBans_partB(void)
 {
 	struct ban *b, *b0;
-	struct ban_to_free_list_item *list_start, *list_item;
 
 	b0 = NULL;
 	list_start = NULL;
@@ -808,31 +863,11 @@ BANLIST_ClearAllGoneBans_partB(void)
 			b0 = NULL;
 		}
 		if (b0 != NULL) {
-			if (list_start == NULL) {
-				ALLOC_OBJ(list_start, BAN_TO_FREE_LIST_ITEM_MAGIC);
-				list_start->ban = b0;
-				list_start->next_item = NULL;
-				list_item = list_start;
-			}
-			else {
-				ALLOC_OBJ(list_item->next_item, BAN_TO_FREE_LIST_ITEM_MAGIC);
-				list_item = list_item->next_item;
-				list_item->ban = b0;
-				list_item->next_item = NULL;
-			}
+			add_ban_to_trash(b0);
 			b0 = NULL;
 		}
 	}
 	Lck_Unlock(&ban_mtx);
-	TIM_sleep(5.0);
-	list_item = list_start;
-	while (list_start != NULL) {
-		list_item = list_start;
-		list_start = list_start->next_item;
-		BAN_Free(list_item->ban);
-		FREE_OBJ(list_item);
-		list_item = NULL;
-	}
 }
 
 void
@@ -856,7 +891,6 @@ BANLIST_ClearAllGoneBans(void)
     startB = getMicroTime();
 	BANLIST_ClearAllGoneBans_partB();
     end = getMicroTime();
-    end -= 5000; // TIM_sleep(5.0); in BANLIST_ClearAllGoneBans_partB
 
     VSC_C_main->n_blt_clear_all += (int) (end - start);
     VSC_C_main->n_blt_clear_all_B += (int) (end - startB);
@@ -1067,6 +1101,16 @@ ban_cleaner(struct sess *sp, void *priv)
     NEEDLESS_RETURN(NULL);
 }
 
+static void * __match_proto__(bgthread_t)
+ban_destroyer(struct sess *sp, void *priv)
+{
+	while (1) {
+		clean_ban_trash();
+		TIM_sleep(1.0);
+	}
+	NEEDLESS_RETURN(NULL);
+}
+
 /*--------------------------------------------------------------------
  * CLI functions to add bans
  */
@@ -1207,6 +1251,12 @@ BAN_Init(void)
 {
 
 	Lck_New(&ban_mtx, lck_ban);
+	Lck_New(&ban_trash_mtx, lck_ban_trash);
+
+	Lck_Lock(&ban_trash_mtx);
+	init_ban_trash();
+	Lck_Unlock(&ban_trash_mtx);
+
 	CLI_AddFuncs(ban_cmds);
 	assert(BAN_F_LURK == OC_F_LURK);
 	AN((1 << LURK_SHIFT) & BAN_F_LURK);
